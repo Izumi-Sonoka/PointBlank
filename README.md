@@ -653,6 +653,11 @@ Pointblank/
 
 ```
 pointblank/
+├── GRAMMAR.md            # DSL specification
+├── DOCUMENTATION.md      # Developer documentation
+├── extensions.md         # Extension system guide
+├── ARCHITECTURE_SUMMARY.md
+│── README.md             # This file
 ├── src/
 │   ├── config/           # ConfigParser, ConfigWatcher, LayoutConfigParser
 │   ├── core/             # WindowManager, SessionManager, Toaster
@@ -665,12 +670,6 @@ pointblank/
 ├── include/pointblank/   # Public headers
 ├── extension_template/   # Example extension template
 ├── contrib/              # Desktop entry, xinitrc
-├── text/
-│   ├── GRAMMAR.md        # DSL specification
-│   ├── DOCUMENTATION.md # Developer documentation
-│   ├── extensions.md     # Extension system guide
-│   ├── ARCHITECTURE_SUMMARY.md
-│   └── README.md         # This file
 └── CMakeLists.txt        # Build configuration
 ```
 
