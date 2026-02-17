@@ -1,0 +1,580 @@
+// ============================================================================
+// Pointblank Window Manager - DefaultConfiguration
+// ============================================================================
+// File: ~/.config/pblank/pointblank.wmi
+// .wmi = Window Management Interface (DSL for window manager config)
+// 
+// API Version: 2.0.0
+// Last Updated: 2026-02-16
+//
+// Quick Reference:
+//   - Reload config: SUPER+SHIFT+R
+//   - Exit WM: SUPER+SHIFT+Q
+//   - Kill window: SUPER+Q
+//   - Terminal: SUPER+RETURN
+//
+// Documentation: ~/.config/pblank/README.md
+
+pointblank: {
+    // ========================================================================
+    // Performance & Optimization
+    // ========================================================================
+    // Fine-tune for your hardware. Gaming/high-refresh setups should enable
+    // real-time mode. For laptops, keep defaults for battery life.
+    
+    performance: {
+        // ---- Scheduler Configuration ----
+        // Policy options: "other" (default), "fifo" (real-time), "rr", "batch"
+        // Use "fifo" for gaming/high-refresh displays (requires privileges)
+        scheduler_policy: "other"
+        scheduler_priority: 0          // 1-99 for real-time, 0 for normal
+        
+        // ---- CPU Affinity ----
+        // Pin WM to specific cores for better cache locality
+        // Example: "0,1,2,3" for first 4 cores, "" for automatic
+        cpu_cores: ""                  // Empty = auto-detect optimal cores
+        cpu_exclusive: false           // Reserve cores exclusively
+        hyperthreading_aware: true     // Avoid sibling hyperthreads
+        
+        // ---- Real-Time Mode ----
+        // Enable for minimal latency (gaming, competitive esports)
+        // Requires: sudo setcap cap_sys_nice=ep /usr/bin/pointblank
+        realtime_mode: false           // WARNING: Can cause system freezes if misconfigured
+        realtime_priority: 50          // 1-99, higher = more priority
+        lock_memory: false             // Prevent page faults (uses more RAM)
+        locked_memory_mb: 64           // Memory to preallocate
+        
+        // ---- Frame Timing ----
+        // Match your monitor's refresh rate
+        target_fps: 60                 // Target frame rate (60, 120, 144, 240)
+        min_fps: 30                    // Minimum acceptable FPS
+        max_fps: 144                   // Maximum FPS cap
+        vsync: true                    // Enable VSync (disable for lowest latency)
+        adaptive_sync: true            // FreeSync/G-Sync support
+        
+        // ---- Throttling ----
+        // Reduce CPU usage when idle or on battery
+        throttle_threshold_us: 1000    // Throttle if frame exceeds this (microseconds)
+        throttle_delay_us: 100         // Delay between throttled frames
+        throttle_on_battery: true      // Auto-throttle on battery power
+        
+        // ---- Event Processing ----
+        max_batch_size: 16             // Max events processed per frame
+        batch_timeout_us: 100          // Max wait time for event batching
+        
+        // ---- Rendering ----
+        dirty_rectangles_only: true    // Only render changed regions (recommended)
+        double_buffer: true            // Double buffering (always on)
+        triple_buffer: false           // Triple buffering (for high refresh rates)
+        
+        // ---- Monitoring ----
+        metrics_enabled: true          // Track performance metrics
+        metrics_interval_ms: 1000      // Update interval
+        latency_tracking: true         // Track p50/p95/p99 latency
+    };
+    
+    // ========================================================================
+    // Extension System
+    // ========================================================================
+    // Load custom extensions for animations, effects, custom layouts, etc.
+    // Extensions are .so files compiled from C++ code.
+    
+    extensions: {
+        enabled: true                  // Master switch for extension system
+        strict_validation: true        // Verify ABI compatibility
+        health_check_interval_s: 30    // Check extension health every 30s
+        
+        // ---- Extension Search Paths ----
+        // Searched in order: builtin → user → system
+        builtin_extension_dir: "./extensions/build"
+        user_extension_dir: "~/.config/pblank/extensions/user"
+        system_paths: [
+            "/usr/lib/pointblank/extensions",
+            "/usr/local/lib/pointblank/extensions"
+        ]
+        
+        init_timeout_ms: 5000          // Extension init timeout
+        max_extensions: 32             // Maximum number of extensions
+        allow_event_blocking: true     // Let extensions block events
+    };
+    
+    // ========================================================================
+    // Window Rules (Global Defaults)
+    // ========================================================================
+    // Default properties for all windows. Override per-app with conditionals.
+    
+    window_rules: {
+        opacity: 1.0                   // Default opacity (0.0-1.0)
+        blur: false                    // Background blur (requires compositor)
+        border_width: 2                // Border width in pixels
+        gap_size: 10                   // Default gap between windows
+    };
+    
+    // ========================================================================
+    // Workspace Configuration
+    // ========================================================================
+    // Infinite workspaces = create workspaces on-demand, no upper limit.
+    // Great for organizing many projects without pre-allocating workspaces.
+    
+    workspaces: {
+        infinite: true                 // Enable dynamic/infinite workspaces
+        max_workspaces: 12             // Only used when infinite: false
+        initial_count: 1               // Workspaces created at startup
+        dynamic_creation: true         // Create workspace when switching to new number
+        auto_remove: true              // Remove empty workspaces automatically
+        min_persist: 1                 // Always keep at least this many workspaces
+    };
+    
+    // ========================================================================
+    // Key Bindings
+    // ========================================================================
+    // Format: "MODIFIER1, MODIFIER2, KEY": "action"
+    // Modifiers: SUPER, ALT, CTRL, SHIFT
+    // Keys: Letter keys, F1-F12, RETURN, SPACE, arrow keys, etc.
+    
+    binds: {
+        // ---- Window Management ----
+        "SUPER, Q": "killactive"               // Close focused window
+        "SUPER, F": "fullscreen"               // Toggle fullscreen
+        "SUPER, T": "togglefloating"           // Toggle floating mode
+        "SUPER, SPACE": "togglefloating"       // Alternative floating toggle
+        
+        // ---- Layout Switching ----
+        "SUPER, M": "layout monocle"           // Fullscreen single window
+        "SUPER, B": "layout bsp"               // Binary space partitioning
+        "SUPER, S": "layout masterstack"       // Master + stack (dwm-style)
+        "SUPER, C": "layout centered_master"   // Center master with side stacks
+        "SUPER, G": "layout dynamic_grid"      // NxM grid
+        "SUPER, D": "layout dwindle_spiral"    // Fibonacci spiral
+        "SUPER, COMMA": "cyclelayoutprev"      // Previous layout
+        "SUPER, PERIOD": "cyclelayoutnext"     // Next layout
+        
+        // ---- Focus Navigation (Arrow keys) ----
+        "SUPER, LEFT": "focusleft"
+        "SUPER, RIGHT": "focusright"
+        "SUPER, UP": "focusup"
+        "SUPER, DOWN": "focusdown"
+        
+        // ---- Window Movement (Vim-style) ----
+        "SUPER_SHIFT, H": "swapleft"           // Swap with left
+        "SUPER_SHIFT, L": "swapright"          // Swap with right
+        "SUPER_SHIFT, K": "swapup"             // Swap with up
+        "SUPER_SHIFT, J": "swapdown"           // Swap with down
+        
+        // ---- Window Resizing (Vim-style) ----
+        "SUPER, H": "resizeleft"           // Resize left
+        "SUPER, L": "resizeright"          // Resize right
+        "SUPER, K": "resizeup"             // Resize up
+        "SUPER, J": "resizedown"          // Resize down
+        
+        // ---- Workspace Switching (1-10) ----
+        "SUPER, 1": "workspace 1"
+        "SUPER, 2": "workspace 2"
+        "SUPER, 3": "workspace 3"
+        "SUPER, 4": "workspace 4"
+        "SUPER, 5": "workspace 5"
+        "SUPER, 6": "workspace 6"
+        "SUPER, 7": "workspace 7"
+        "SUPER, 8": "workspace 8"
+        "SUPER, 9": "workspace 9"
+        "SUPER, 0": "workspace 10"
+        
+        // ---- Workspace Navigation ----
+        "SUPER, BRACKETLEFT": "workspaceprev"  // Previous workspace
+        "SUPER, BRACKETRIGHT": "workspacenext" // Next workspace
+        "SUPER, TAB": "workspacenext"          // Tab to next workspace
+        "SUPER_SHIFT, TAB": "workspaceprev"    // Shift+Tab to previous
+        
+        // ---- Move Window to Workspace ----
+        "SUPER_SHIFT, 1": "movetoworkspace 1"
+        "SUPER_SHIFT, 2": "movetoworkspace 2"
+        "SUPER_SHIFT, 3": "movetoworkspace 3"
+        "SUPER_SHIFT, 4": "movetoworkspace 4"
+        "SUPER_SHIFT, 5": "movetoworkspace 5"
+        "SUPER_SHIFT, 6": "movetoworkspace 6"
+        "SUPER_SHIFT, 7": "movetoworkspace 7"
+        "SUPER_SHIFT, 8": "movetoworkspace 8"
+        "SUPER_SHIFT, 9": "movetoworkspace 9"
+        "SUPER_SHIFT, 0": "movetoworkspace 10"
+        
+        // ---- Application Launchers ----
+        "SUPER, RETURN": exec: "alacritty"     // Terminal
+        "SUPER, W": exec: "firefox"            // Web browser
+        "SUPER, E": exec: "thunar"             // File manager
+        "SUPER, R": exec: "rofi -show drun"    // App launcher
+        "SUPER, P": exec: "rofi -show run"     // Command runner
+        
+        // ---- Screenshots ----
+        "PRINT": exec: "flameshot gui"         // Screenshot tool
+        "SUPER, PRINT": exec: "flameshot full -c" // Full screenshot to clipboard
+        "SHIFT, PRINT": exec: "flameshot screen" // Current monitor
+        
+        // ---- Media Keys ----
+        "XF86AudioRaiseVolume": exec: "pactl set-sink-volume @DEFAULT_SINK@ +5%"
+        "XF86AudioLowerVolume": exec: "pactl set-sink-volume @DEFAULT_SINK@ -5%"
+        "XF86AudioMute": exec: "pactl set-sink-mute @DEFAULT_SINK@ toggle"
+        "XF86AudioPlay": exec: "playerctl play-pause"
+        "XF86AudioNext": exec: "playerctl next"
+        "XF86AudioPrev": exec: "playerctl previous"
+        
+        // ---- Brightness Control ----
+        "XF86MonBrightnessUp": exec: "brightnessctl set +5%"
+        "XF86MonBrightnessDown": exec: "brightnessctl set 5%-"
+        
+        // ---- System Control ----
+        "SUPER_SHIFT, R": "reload"             // Reload config
+        "SUPER_SHIFT, Q": "exit"               // Exit Pointblank
+        "SUPER_SHIFT, E": exec: "powermenu"    // Power menu (if installed)
+        "SUPER, ESCAPE": exec: "xkill"         // Force kill window
+    };
+
+    // ========================================================================
+    // Mouse Behavior
+    // ========================================================================
+    
+    mouse: {
+        focus_follows_mouse: true      // Focus window on mouse enter
+        mouse_warping: false           // Warp mouse to focused window
+        cursor_speed: 1.0              // Mouse sensitivity multiplier
+    };
+    
+    // ========================================================================
+    // Drag & Drop Configuration
+    // ========================================================================
+    // Drag windows with SUPER+Left-Click to move/swap
+    
+    drag: {
+        swap_on_drag: true             // Swap windows when dragging over them
+        threshold: 5                   // Pixels before drag starts
+        swap_threshold: 20             // Pixels into window before swap triggers
+        visual_feedback: true          // Show visual feedback during drag
+    };
+    
+    // ========================================================================
+    // Layout Configuration
+    // ========================================================================
+    
+    layout: {
+        cycle_direction: "forward"     // "forward" or "backward"
+        wrap_cycle: true               // Wrap around at end
+        
+        // ---- BSP Layout ----
+        bsp: {
+            gap_size: 10
+            border_width: 2
+            split_ratio: 0.5           // Default split ratio
+        };
+        
+        // ---- Master-Stack Layout ----
+        masterstack: {
+            master_ratio: 0.55         // Master area takes 55% of screen
+            max_master: 1              // Number of master windows
+            gap_size: 10
+            border_width: 2
+        };
+        
+        // ---- Centered Master Layout ----
+        centered_master: {
+            center_ratio: 0.5          // Center column width ratio
+            max_center: 1              // Max windows in center
+            gap_size: 10
+            center_on_focus: true      // Move focused window to center
+        };
+        
+        // ---- Dynamic Grid Layout ----
+        dynamic_grid: {
+            prefer_horizontal: false   // Prefer wider cells
+            min_cell_width: 200        // Minimum cell width
+            min_cell_height: 150       // Minimum cell height
+            gap_size: 10
+        };
+        
+        // ---- Dwindle Spiral Layout ----
+        dwindle_spiral: {
+            initial_ratio: 0.55        // First split ratio
+            ratio_increment: 0.02      // Ratio change per level
+            gap_size: 10
+            shift_by_focus: true       // Rotate spiral to focused
+        };
+        
+        // ---- Tabbed/Stacked Layout ----
+        tabbed_stacked: {
+            tab_height: 25             // Tab bar height
+            tab_min_width: 100         // Minimum tab width
+            show_focused_only: true    // Only render focused window
+            tab_at_top: true           // Tab bar position
+        };
+    };
+    
+    // ========================================================================
+    // Gap Configuration
+    // ========================================================================
+    // Global gaps between windows and screen edges
+    
+    layout_gaps: {
+        inner_gap: 10                  // Gap between adjacent windows
+        outer_gap: 10                  // Gap from screen edges
+        
+        // Optional: Per-edge overrides (use -1 to inherit outer_gap)
+        // Useful for status bars or panels
+        top_gap: -1                    // -1 = use outer_gap
+        bottom_gap: 30                 // Reserve 30px for status bar
+        left_gap: -1
+        right_gap: -1
+    };
+    
+    // ========================================================================
+    // Animations
+    // ========================================================================
+    // Built-in simple animations. For advanced effects, use extensions.
+    
+    animations: {
+        enabled: true                  // Master switch
+        curve: "ease-in-out"           // "linear", "ease-in", "ease-out", "ease-in-out"
+        duration: 200                  // Animation duration in milliseconds
+    };
+    
+    // ========================================================================
+    // Border Colors
+    // ========================================================================
+    // Window border colors (hex format with #)
+    
+    borders: {
+        focused: "#89B4FA"             // Catppuccin Blue
+        unfocused: "#45475A"           // Catppuccin Surface1
+        urgent: "#F38BA8"              // Catppuccin Red
+        width: 2                       // Border width in pixels
+    };
+    
+    // ========================================================================
+    // Status Bar
+    // ========================================================================
+    // Built-in status bar showing workspaces, layout, and window title
+    
+    status_bar: {
+        enabled: true                  // Enable status bar
+        height: 24                     // Bar height in pixels
+        padding_x: 8                   // Horizontal padding
+        padding_y: 4                   // Vertical padding
+        position: "top"                // "top" or "bottom"
+        
+        // ---- Colors (Catppuccin Mocha Theme) ----
+        bg_color: "#1E1E2E"            // Background (Mocha base)
+        fg_color: "#CDD6F4"            // Text color (Mocha text)
+        accent_color: "#89B4FA"        // Accent (Mocha blue)
+        urgent_color: "#F38BA8"        // Urgent (Mocha red)
+        inactive_bg: "#45475A"         // Inactive workspace (Surface0)
+        
+        // ---- Font ----
+        font_family: "JetBrains Mono"  // Monospace font recommended
+        font_size: 11.0                // Font size in points
+        
+        // ---- Display Options ----
+        show_workspace_icons: true     // Show workspace indicators
+        show_layout_mode: true         // Show current layout name
+        show_window_title: true        // Show focused window title
+        workspace_clickable: true      // Click to switch workspaces
+        
+        // ---- Workspace Icons ----
+        // Custom icons for each workspace (optional)
+        workspace_icons: [
+            "1", "2", "3", "4", "5",   // Simple numbers
+            "6", "7", "8", "9", "10"
+            // Or use Unicode: "🏠", "💻", "🌐", "📁", "🎮", etc.
+        ]
+    };
+    
+    // ========================================================================
+    // Window Behavior
+    // ========================================================================
+    
+    windows: {
+        auto_resize_non_docks: true    // Resize windows to fill layout area
+        floating_resize_enabled: true  // Resize floating windows by edge dragging
+        floating_resize_edge_size: 8   // Edge detection zone size
+        smart_gaps: false              // Disable gaps when only 1 window
+        smart_borders: false           // Disable borders when only 1 window
+        
+        // ---- Focus Behavior ----
+        focus_new_windows: true        // Auto-focus new windows
+        focus_urgent_windows: true     // Auto-focus urgent windows
+        
+        // ---- Floating Window Defaults ----
+        default_floating_width: 800
+        default_floating_height: 600
+        center_floating_windows: true  // Center new floating windows
+    };
+    
+    // ========================================================================
+    // Autostart Commands
+    // ========================================================================
+    // Commands executed when Pointblank starts (run in background)
+    
+    autostart: {
+        commands: [
+            // ---- Compositor (for transparency, blur, shadows) ----
+            "picom -b --config ~/.config/picom/picom.conf",
+            
+            // ---- Wallpaper ----
+            "nitrogen --restore",          // Or: feh --bg-scale ~/wallpaper.jpg
+            
+            // ---- System Tray Applets ----
+            "nm-applet",                   // Network manager
+            "blueman-applet",              // Bluetooth
+            "pasystray",                   // PulseAudio volume
+            
+            // ---- Notifications ----
+            "dunst",                       // Notification daemon
+            
+            // ---- Input Settings ----
+            "xset r rate 300 50",          // Keyboard repeat rate
+            "setxkbmap -option caps:escape", // Caps Lock as Escape
+            
+            // ---- Clipboard Manager ----
+            "clipmenud",                   // Clipboard history
+            
+            // ---- Night Light / Blue Light Filter ----
+            // "redshift -l 0:0",          // Auto location
+            
+            // ---- Auto-mount USB Drives ----
+            // "udiskie --tray",
+            
+            // ---- Polkit Agent (for GUI password prompts) ----
+            "/usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1"
+        ]
+    };
+};
+
+// ============================================================================
+// Per-Application Window Rules
+// ============================================================================
+// Apply custom rules based on window class, instance, or title.
+// Find window class: xprop | grep WM_CLASS
+
+// ---- Steam ----
+// Always floating on workspace 5
+if (window.class == "steam") {
+    window_rules: {
+        floating: true
+        workspace: 5
+        opacity: 1.0
+    };
+};
+
+// ---- Firefox ----
+// Dedicated workspace for browsing
+if (window.class == "firefox") {
+    window_rules: {
+        workspace: 2
+        opacity: 1.0
+    };
+};
+
+// ---- Spotify ----
+// Music player on workspace 10
+if (window.class == "spotify") {
+    window_rules: {
+        workspace: 10
+        opacity: 0.95
+    };
+};
+
+// ---- Discord / Slack ----
+// Communication apps on workspace 4
+if (window.class == "discord" || window.class == "slack") {
+    window_rules: {
+        workspace: 4
+        opacity: 0.95
+    };
+};
+
+// ---- Dialogs and Popups ----
+// Always floating, centered, full opacity
+if (window.class == "dialog" || 
+    window.class == "notification" ||
+    window.class == "popup" ||
+    window.type == "dialog") {
+    window_rules: {
+        floating: true
+        centered: true
+        opacity: 1.0
+    };
+};
+
+// ---- File Chooser ----
+if (window.class == "GtkFileChooserDialog") {
+    window_rules: {
+        floating: true
+        centered: true
+        width: 1000
+        height: 700
+    };
+};
+
+// ---- Picture-in-Picture ----
+// Keep video players floating and on top
+if (window.title == "Picture-in-Picture" || 
+    window.title == "Picture in picture") {
+    window_rules: {
+        floating: true
+        sticky: true      // Show on all workspaces
+        above: true       // Always on top
+    };
+};
+
+// ---- Terminal Transparency ----
+// Optional: Make terminals slightly transparent
+// if (window.class == "alacritty" || window.class == "kitty") {
+//     window_rules: {
+//         opacity: 0.95
+//         blur: true
+//     };
+// };
+
+// ---- IDE / Code Editors ----
+// Dev workspace with full opacity
+if (window.class == "code" || 
+    window.class == "jetbrains" ||
+    window.class == "VSCodium") {
+    window_rules: {
+        workspace: 3
+        opacity: 1.0
+    };
+};
+
+// ============================================================================
+// Extension Loading
+// ============================================================================
+// Load custom extensions here with #import or #include
+
+// Built-in extensions (from /usr/lib/pointblank/extensions/)
+// #include animation_advanced
+// #include blur_enhanced
+// #include rounded_corners
+
+// User extensions (from ~/.config/pblank/extensions/user/)
+// #import my_custom_layout
+// #import window_preview
+
+// ============================================================================
+// Notes
+// ============================================================================
+// 
+// Performance Tips:
+//   - Disable animations for max performance: animations.enabled: false
+//   - Use compositor (picom) for blur/transparency effects
+//   - Match target_fps to your monitor refresh rate
+//   - Enable vsync to eliminate screen tearing
+//
+// Troubleshooting:
+//   - Config errors show in OSD notifications (top-left corner)
+//   - Check logs: ~/.xsession-errors or pointblank.log
+//   - Verify keybinds don't conflict with applications
+//   - Use SUPER+SHIFT+R to reload config after changes
+//
+// Resources:
+//   - Documentation: /usr/share/doc/pointblank/
+//   - Examples: ~/.config/pblank/examples/
+//   - Community: https://github.com/your-repo/pointblank
+//
+// ============================================================================

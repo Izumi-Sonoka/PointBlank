@@ -1,0 +1,36 @@
+#!/bin/sh
+#
+# Pointblank Window Manager startup script for startx
+# Copy this file to ~/.xinitrc
+#
+# Usage:
+#   cp contrib/xinitrc ~/.xinitrc
+#   startx
+#
+
+# Set up environment
+export XDG_SESSION_TYPE=x11
+export XDG_CURRENT_DESKTOP=Pointblank
+export XDG_SESSION_DESKTOP=Pointblank
+
+# Optional: Set keyboard layout
+# setxkbmap -layout us
+
+# Optional: Set wallpaper
+# feh --bg-scale /path/to/wallpaper.jpg &
+
+# Optional: Start compositor for transparency/blur effects
+# picom -b
+
+# Optional: Start notification daemon
+# dunst &
+
+# Optional: Start panel/bar
+# polybar example &
+
+# Optional: Start polkit agent
+# /usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1 &
+
+# Start Pointblank Window Manager
+# The window manager will handle session initialization internally
+exec pointblank

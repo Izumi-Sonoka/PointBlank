@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Pointblank
+Comment=Pointblank Tiling Window Manager
+Exec=pointblank
+Type=Application
+DesktopNames=Pointblank
+Categories=WindowManager;
+X-LightDM-DesktopName=Pointblank
