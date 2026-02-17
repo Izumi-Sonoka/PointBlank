@@ -1,5 +1,5 @@
 // ============================================================================
-// Pointblank Window Manager - DefaultConfiguration
+// Point:Blank Window Manager - Defaul tConfiguration
 // ============================================================================
 // File: ~/.config/pblank/pointblank.wmi
 // .wmi = Window Management Interface (DSL for window manager config)
@@ -12,8 +12,7 @@
 //   - Exit WM: SUPER+SHIFT+Q
 //   - Kill window: SUPER+Q
 //   - Terminal: SUPER+RETURN
-//
-// Documentation: ~/.config/pblank/README.md
+// ============================================================================
 
 pointblank: {
     // ========================================================================
