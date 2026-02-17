@@ -425,8 +425,8 @@ The LayoutEngine implements 8 layout modes: BSP, Dwindle, Monocle, Master, Colum
 ```
 ┌───────────────┐
 │               │
-│   Focused     │
-│    Window     │
+│    Focused    │
+│     Window    │
 │               │
 └───────────────┘
 ```
@@ -434,11 +434,11 @@ The LayoutEngine implements 8 layout modes: BSP, Dwindle, Monocle, Master, Colum
 #### Master-Stack Layout
 ```
 ┌─────────┬─────┐
-│         │     │
-│ Master  │ S1  │
-│         │     │
-│         ├─────┤
+│         │ S1  │
+│ Master  ├─────┤
 │         │ S2  │
+│         ├─────┤
+│         │ S3  │
 └─────────┴─────┘
 ```
 
