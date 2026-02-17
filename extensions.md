@@ -495,14 +495,14 @@ The extension system is implemented in the following files:
 
 | File | Description |
 |------|-------------|
-| [`include/pointblank/extensions/ExtensionAPI.hpp`](../include/pointblank/extensions/ExtensionAPI.hpp) | API definitions and IExtension_v2 interface |
-| [`include/pointblank/extensions/ExtensionLoader.hpp`](../include/pointblank/extensions/ExtensionLoader.hpp) | Loader header with class definition |
-| [`src/extensions/ExtensionLoader.cpp`](../src/extensions/ExtensionLoader.cpp) | Extension loading logic and lifecycle management |
-| [`extension_template/ExampleExtension.cpp`](../extension_template/ExampleExtension.cpp) | Template example with full implementation |
+| [`include/pointblank/extensions/ExtensionAPI.hpp`](/include/pointblank/extensions/ExtensionAPI.hpp) | API definitions and IExtension_v2 interface |
+| [`include/pointblank/extensions/ExtensionLoader.hpp`](/include/pointblank/extensions/ExtensionLoader.hpp) | Loader header with class definition |
+| [`src/extensions/ExtensionLoader.cpp`](/src/extensions/ExtensionLoader.cpp) | Extension loading logic and lifecycle management |
+| [`extension_template/ExampleExtension.cpp`](/extension_template/ExampleExtension.cpp) | Template example with full implementation |
 
 ## Example: Complete Extension
 
-See [`extension_template/ExampleExtension.cpp`](../extension_template/ExampleExtension.cpp) for a complete, working example that demonstrates:
+See [`extension_template/ExampleExtension.cpp`](/extension_template/ExampleExtension.cpp) for a complete, working example that demonstrates:
 
 - Extension lifecycle management
 - Event subscription and handling

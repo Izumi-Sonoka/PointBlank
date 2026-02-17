@@ -1,6 +1,6 @@
 # Point Blank .wmi DSL Grammar Specification
 
-> **Note**: This document reflects the current DSL implementation in [`ConfigParser.cpp`](../src/config/ConfigParser.cpp) and [`ConfigParser.hpp`](../include/pointblank/config/ConfigParser.hpp).
+> **Note**: This document reflects the current DSL implementation in [`ConfigParser.cpp`](/src/config/ConfigParser.cpp) and [`ConfigParser.hpp`](/include/pointblank/config/ConfigParser.hpp).
 
 ## EBNF Grammar
 
@@ -117,7 +117,7 @@ let strings = ["a", "b", "c"];
 let mixed = [1, "two", true];
 ```
 
-Arrays can contain any expression type and are parsed by the [`primary()`](src/config/ConfigParser.cpp:887) method.
+Arrays can contain any expression type and are parsed by the [`primary()`](/src/config/ConfigParser.cpp:887) method.
 
 ## Semantic Rules
 
@@ -135,7 +135,7 @@ let max_workspace = 12;
 let terminal = "alacritty";
 ```
 
-> **Implementation Status**: The `let` keyword is recognized by the lexer ([`ConfigParser.cpp:270`](../src/config/ConfigParser.cpp)) but variable declarations are not yet fully implemented in the parser. This feature is planned for future release.
+> **Implementation Status**: The `let` keyword is recognized by the lexer ([`ConfigParser.cpp:270`](/src/config/ConfigParser.cpp)) but variable declarations are not yet fully implemented in the parser. This feature is planned for future release.
 
 ### Member Access (Property Chaining)
 ```wmi

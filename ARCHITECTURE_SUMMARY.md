@@ -454,58 +454,45 @@ echo "invalid syntax !!!" > ~/.config/pblank/pointblank.wmi
 
 ## Code Statistics
 
-```
-File                          Lines   Purpose
-─────────────────────────────────────────────────────────────────────
-WindowManager.hpp              350   Core WM class definition
-WindowManager.cpp             1800   Event loop & client management
-ConfigParser.hpp              350    DSL lexer/parser/AST definitions
-ConfigParser.cpp             1900    DSL compilation
-ConfigWatcher.hpp             150    Config file monitoring
-ConfigWatcher.cpp             500    Inotify integration
-LayoutConfigParser.hpp        400    Layout-specific config parsing
-LayoutConfigParser.cpp       1200    Layout DSL compilation
-SessionManager.hpp            150    Session initialization
-SessionManager.cpp            300    XDG/D-Bus setup
-Toaster.hpp                   150    OSD notification system
-Toaster.cpp                   700    Cairo rendering & D-Bus
-XServerManager.hpp             30    X server wrapper
-XServerManager.cpp            100    X server operations
-EWMHManager.hpp               450    EWMH compliance
-EWMHManager.cpp              1100    Atom management
-MonitorManager.hpp            200    Multi-monitor handling
-MonitorManager.cpp            300    XRandR integration
-SyncManager.hpp               200    X11 sync protocol
-SyncManager.cpp               300    Sync handling
-ExtensionLoader.hpp           350    Dynamic extension loading
-ExtensionLoader.cpp           750    dlopen() management
-PluginManager.hpp             200    Plugin lifecycle
-PluginManager.cpp             150    Plugin registry
-LayoutEngine.hpp             1000    BSP tree & layout base
-LayoutEngine.cpp             2000    Layout implementations
-LayoutProvider.hpp            400    Layout provider interface
-LayoutProvider.cpp            500    Layout供应
-PerformanceTuner.hpp          500    Performance tuning
-PerformanceTuner.cpp          400    CPU affinity & scheduling
-RenderPipeline.hpp            400    Rendering pipeline
-RenderPipeline.cpp            300    Frame management
-GapConfig.hpp                 200    Gap configuration
-GapConfig.cpp                 100    Gap parsing
-SpatialGrid.hpp               300    Spatial indexing
-SpatialGrid.cpp               250    Grid operations
-Camera.hpp                    300    Camera/viewport
-FloatingWindowManager.hpp     250    Floating windows
-FloatingWindowManager.cpp     400    Floating operations
-KeybindManager.hpp            150    Keybind definitions
-KeybindManager.cpp            450    Key handling
-PreselectionWindow.hpp        150    Window preselection
-PreselectionWindow.cpp        400    Preselection UI
-SizeConstraints.hpp           200    Window constraints
-SizeConstraints.cpp           350    Constraint enforcement
-main.cpp                      200    Entry point
-─────────────────────────────────────────────────────────────────────
-TOTAL                        19030   Lines (header comments included)
-```
+Based on `cloc` analysis (actual lines of code):
+
+| File | Code | Comments | Blanks | Purpose |
+|------|------|----------|--------|---------|
+| ConfigParser.cpp | 1,706 | 158 | 275 | DSL lexer/parser/interpreter |
+| WindowManager.cpp | 1,654 | 333 | 454 | Core WM event loop & client management |
+| LayoutEngine.cpp | 1,552 | 262 | 413 | BSP tree & layout implementations |
+| LayoutConfigParser.cpp | 1,087 | 73 | 180 | Layout-specific config parsing |
+| EWMHManager.cpp | 773 | 101 | 178 | EWMH compliance & atom management |
+| ExtensionLoader.cpp | 632 | 76 | 211 | Dynamic extension loading |
+| Toaster.cpp | 537 | 96 | 143 | OSD notification system |
+| ConfigWatcher.cpp | 477 | 40 | 101 | Config file monitoring (inotify) |
+| LockFreeStructures.hpp | 460 | 199 | 125 | Lock-free data structures |
+| LayoutProvider.cpp | 452 | 37 | 131 | Custom layout providers |
+| LayoutEngine.hpp | 428 | 432 | 180 | BSP tree & layout base classes |
+| ConfigParser.hpp | 352 | 91 | 92 | DSL lexer/parser definitions |
+| FloatingWindowManager.cpp | 396 | 29 | 82 | Floating window operations |
+| KeybindManager.cpp | 346 | 41 | 89 | Keybind registration & handling |
+| SizeConstraints.cpp | 312 | 38 | 59 | Window size constraints |
+| LayoutConfigParser.hpp | 306 | 94 | 79 | Layout config parsing API |
+| PerformanceTuner.cpp | 298 | 65 | 92 | Performance tuning |
+| PreselectionWindow.cpp | 298 | 38 | 83 | Preselection window handling |
+| PerformanceTuner.hpp | 284 | 191 | 104 | Performance tuning API |
+| RenderPipeline.hpp | 283 | 148 | 90 | Rendering pipeline |
+| SyncManager.cpp | 282 | 23 | 71 | X11 sync protocol |
+| ExtensionAPI.hpp | 248 | 251 | 79 | Extension API definitions |
+| WindowManager.hpp | 230 | 186 | 94 | Core WM class definition |
+| EWMHManager.hpp | 230 | 309 | 88 | EWMH API definitions |
+| RenderPipeline.cpp | 225 | 50 | 67 | Frame management |
+| LayoutProvider.hpp | 223 | 157 | 73 | Layout provider interface |
+| MonitorManager.cpp | 211 | 15 | 63 | XRandR integration |
+| SessionManager.cpp | 192 | 64 | 65 | XDG/D-Bus session setup |
+| SpatialGrid.cpp | 184 | 35 | 52 | Spatial indexing |
+| ExtensionLoader.hpp | 171 | 226 | 85 | Extension loading API |
+| PluginManager.cpp | 165 | 16 | 39 | Plugin lifecycle management |
+| main.cpp | 160 | 21 | 35 | Entry point |
+| Camera.hpp | 146 | 135 | 39 | Camera/viewport |
+| SpatialGrid.hpp | 122 | 163 | 42 | Spatial grid API |
+| **TOTAL** | **16,413** | **5,509** | **4,447** | **50 source files** |
 
 ## Compiler Requirements
 
