@@ -1,4 +1,4 @@
-# Point Blank - X11 Tiling Window Manager
+# Point Blank - Infinite X11 Tiling Window Manager
 
 A modern, DSL-configured tiling window manager for X11 with "Infinite Layouts", "Infinite Workspace" and crash-proof configuration system.
 
