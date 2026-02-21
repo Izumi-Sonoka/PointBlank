@@ -7,7 +7,7 @@ Last Updated: 19th February 2026 (1500 GMT+8)
 Maintained by:  Point:project
 
 > [!WARNING]
-> STILL W.I.P SO EXPECT IT TO BREAKS AND SOME WEIRD ISSUES
+> STILL W.I.P SO EXPECT IT TO BREAKS AND HAVE SOME WEIRD ISSUES
 ---
 
 ## Table of Contents
