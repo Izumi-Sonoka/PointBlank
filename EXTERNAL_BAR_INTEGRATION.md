@@ -10,6 +10,29 @@ This document describes how to integrate external status bars (like polybar, lem
 
 Pointblank provides custom X11 root window properties that external status bars can read to display workspace information, active window details, and layout mode. This approach follows the same philosophy as other tiling window managers like bspwm and i3.
 
+## File-Based Integration
+
+In addition to X11 properties, Pointblank also writes current state to files for easier integration:
+
+| File | Description |
+|------|-------------|
+| `/tmp/pointblank/currentlayout` | Current layout mode (BSP, Monocle, MasterStack, etc.) |
+
+### Reading from Files
+
+```bash
+# Get current layout mode
+cat /tmp/pointblank/currentlayout
+# Output: BSP
+
+# Monitor for changes (using inotifywait)
+inotifywait -m /tmp/pointblank -e close_write | while read event; do
+    cat /tmp/pointblank/currentlayout
+done
+```
+
+This file-based approach is simpler for scripts and status bars that don't want to interact with X11 properties directly.
+
 ## Available Properties
 
 All properties are set on the root window and can be read using `xprop` or X11 libraries.
@@ -323,6 +346,46 @@ rofi -show window
 # Workspace switcher with dmenu
 echo -e "1\n2\n3\n4\n5" | dmenu -p "Workspace:" | xargs -I{} wmctrl -s $(({} - 1))
 ```
+
+## Bug Analysis
+
+### Known Issues
+
+| Issue | Severity | Fix |
+|-------|----------|-----|
+| Properties not updating | Low | Restart status bar |
+| High CPU usage | Low | Increase poll interval |
+| Missing properties | Low | Verify Pointblank running |
+
+### Performance Optimization
+
+Recommended polling intervals:
+- **Workspaces**: 500ms
+- **Title**: 500ms
+- **Layout**: 1000ms
+- **Window counts**: 1000ms
+
+---
+
+## Competitive Analysis
+
+### Market Position
+
+Pointblank provides the most comprehensive status bar integration among tiling WMs:
+
+| Feature | i3 | bspwm | dwm | Pointblank |
+|---------|----|----|------|------------|
+| Custom Atoms | ❌ | ❌ | ❌ | ✅ |
+| EWMH Full | Partial | Partial | Partial | ✅ |
+| Real-time updates | ❌ | ❌ | ❌ | ✅ |
+
+### Recommendations
+
+1. Add IPC for push-based updates
+2. Add D-Bus interface for notifications
+3. Create official polybar/waybar modules
+
+---
 
 ## Troubleshooting
 

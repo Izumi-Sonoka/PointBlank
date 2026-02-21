@@ -39,4 +39,4 @@ void XServerManager::setXEnvironment(const std::string& display_name) {
     setenv("DISPLAY", display_name.c_str(), 1);
 }
 
-} // namespace pblank
+} 

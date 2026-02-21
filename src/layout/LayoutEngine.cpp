@@ -1,4 +1,5 @@
 #include "pointblank/layout/LayoutEngine.hpp"
+#include "pointblank/performance/RenderPipeline.hpp"
 #include "pointblank/utils/Camera.hpp"
 #include "pointblank/utils/SpatialGrid.hpp"
 #include "pointblank/utils/GapConfig.hpp"
@@ -9,13 +10,13 @@
 
 namespace pblank {
 
-// ============================================================================
-// Rect Implementation
-// ============================================================================
+
+
+
 
 Rect Rect::subRect(bool is_left, SplitType split, double ratio) const {
     if (split == SplitType::Vertical) {
-        // Vertical split: divide width (left/right)
+        
         if (is_left) {
             return {x, y, static_cast<unsigned int>(width * ratio), height};
         } else {
@@ -23,7 +24,7 @@ Rect Rect::subRect(bool is_left, SplitType split, double ratio) const {
             return {x + static_cast<int>(left_w), y, width - left_w, height};
         }
     } else {
-        // Horizontal split: divide height (top/bottom)
+        
         if (is_left) {
             return {x, y, width, static_cast<unsigned int>(height * ratio)};
         } else {
@@ -58,9 +59,34 @@ int Rect::distanceTo(const Rect& other, const std::string& direction) const {
     return std::numeric_limits<int>::max();
 }
 
-// ============================================================================
-// BSPNode Implementation
-// ============================================================================
+
+
+
+
+Rect LayoutVisitor::applyOuterGaps(const Rect& bounds, int fallback_gap) const {
+    Rect r = bounds;
+
+    if (gap_config_) {
+        int left   = gap_config_->getLeftGap();
+        int top    = gap_config_->getTopGap();
+        int right  = gap_config_->getRightGap();
+        int bottom = gap_config_->getBottomGap();
+
+        r.x += left;
+        r.y += top;
+        if (r.width  > static_cast<unsigned int>(left + right))  r.width  -= (left + right);
+        if (r.height > static_cast<unsigned int>(top + bottom))  r.height -= (top + bottom);
+    } else if (fallback_gap > 0) {
+        r.x += fallback_gap;
+        r.y += fallback_gap;
+        if (r.width  > static_cast<unsigned int>(2 * fallback_gap)) r.width  -= 2 * fallback_gap;
+        if (r.height > static_cast<unsigned int>(2 * fallback_gap)) r.height -= 2 * fallback_gap;
+    }
+
+    return r;
+}
+
+
 
 BSPNode::BSPNode(Window window) : window_(window), focused_(false) {}
 
@@ -132,10 +158,10 @@ int BSPNode::countWindows() const {
 
 void BSPNode::collectWindows(std::vector<Window>& windows) const {
     if (isLeaf()) {
-        windows.push_back(window_);
+        windows.emplace_back(window_);
         return;
     }
-    // Reserve estimated space to reduce reallocations
+    
     int est_count = countWindows();
     if (windows.capacity() < windows.size() + est_count) {
         windows.reserve(windows.size() + est_count);
@@ -158,6 +184,48 @@ void BSPNode::collectLeavesWithBounds(std::vector<std::pair<BSPNode*, Rect>>& le
     if (right_) right_->collectLeavesWithBounds(leaves, right_bounds);
 }
 
+std::unique_ptr<BSPNode> BSPNode::filterOut(const std::unordered_set<Window>& windows) const {
+    
+    if (isLeaf()) {
+        if (windows.find(window_) != windows.end()) {
+            
+            return nullptr;
+        }
+        
+        return std::make_unique<BSPNode>(window_);
+    }
+    
+    
+    std::unique_ptr<BSPNode> filtered_left;
+    std::unique_ptr<BSPNode> filtered_right;
+    
+    if (left_) {
+        filtered_left = left_->filterOut(windows);
+    }
+    if (right_) {
+        filtered_right = right_->filterOut(windows);
+    }
+    
+    
+    if (!filtered_left && !filtered_right) {
+        return nullptr;
+    }
+    
+    
+    if (filtered_left && !filtered_right) {
+        return filtered_left;
+    }
+    if (!filtered_left && filtered_right) {
+        return filtered_right;
+    }
+    
+    
+    auto result = std::make_unique<BSPNode>(std::move(filtered_left), std::move(filtered_right),
+                                            split_type_, ratio_);
+    result->setFocused(focused_);
+    return result;
+}
+
 BSPNode* BSPNode::findByWindow(BSPNode* root, Window win) {
     if (!root) return nullptr;
     return root->findWindow(win);
@@ -168,38 +236,38 @@ BSPNode* BSPNode::findFocusedInTree(BSPNode* root) {
     return root->findFocused();
 }
 
-// ============================================================================
-// BSPLayout Implementation
-// ============================================================================
+
+
+
 
 void BSPLayout::visit(BSPNode* root, const Rect& bounds, Display* display) {
     if (!root) return;
     
-    // Find the focused node for border color rendering
+    
     BSPNode* focused_node = BSPNode::findFocusedInTree(root);
     
-    // Count windows for smart gaps
+    
     int window_count = root->countWindows();
     
-    // Determine effective gap values from GapConfig if available
+    
     int effective_inner_gap = config_.gap_size;
     int effective_outer_gap = config_.gap_size;
     bool use_smart_gaps = config_.smart_gaps;
     
-    // Override with GapConfig values if available
+    
     if (gap_config_) {
         effective_inner_gap = gap_config_->inner_gap;
         effective_outer_gap = gap_config_->outer_gap;
     }
+
     
-    // Smart gaps: disable INNER gaps only when only one window
-    // Outer gaps (screen edges) should ALWAYS be applied regardless of window count
+    
     if (use_smart_gaps && window_count == 1) {
         effective_inner_gap = 0;
-        // Note: We do NOT set effective_outer_gap to 0 here - outer gaps always apply
+        
     }
     
-    // Apply padding to create screen margins
+    
     unsigned int adjusted_width = bounds.width;
     unsigned int adjusted_height = bounds.height;
     
@@ -217,15 +285,15 @@ void BSPLayout::visit(BSPNode* root, const Rect& bounds, Display* display) {
         adjusted_height
     };
     
-    // Outer gaps (distance from screen edges) are ALWAYS applied
-    // Smart gaps only affects inner gaps between windows, not outer gaps at screen edges
+    
+    
     if (gap_config_) {
         int left_gap = gap_config_->getLeftGap();
         int top_gap = gap_config_->getTopGap();
         int right_gap = gap_config_->getRightGap();
         int bottom_gap = gap_config_->getBottomGap();
         
-        // Apply outer gaps
+        
         adjusted.x += left_gap;
         adjusted.y += top_gap;
         if (adjusted.width > static_cast<unsigned int>(left_gap + right_gap)) {
@@ -234,8 +302,10 @@ void BSPLayout::visit(BSPNode* root, const Rect& bounds, Display* display) {
         if (adjusted.height > static_cast<unsigned int>(top_gap + bottom_gap)) {
             adjusted.height -= (top_gap + bottom_gap);
         }
+        
+
     } else {
-        // Fallback if GapConfig not available
+        
         adjusted.x += effective_outer_gap;
         adjusted.y += effective_outer_gap;
         if (adjusted.width > static_cast<unsigned int>(2 * effective_outer_gap)) {
@@ -246,7 +316,7 @@ void BSPLayout::visit(BSPNode* root, const Rect& bounds, Display* display) {
         }
     }
     
-    // Store effective gaps for use in visitNode
+    
     effective_inner_gap_ = effective_inner_gap;
     
     visitNode(root, adjusted, display, focused_node, bounds, window_count);
@@ -257,20 +327,20 @@ void BSPLayout::visitNode(BSPNode* node, const Rect& bounds, Display* display, B
     if (!node) return;
     
     if (node->isLeaf()) {
-        // Apply geometry to window
+        
         Window win = node->getWindow();
         if (win != None && display) {
-            // Calculate window geometry with gap offset
+            
             int x = bounds.x;
             int y = bounds.y;
             unsigned int w = bounds.width;
             unsigned int h = bounds.height;
             
-            // Ensure minimum size
+            
             if (w < 50) w = 50;
             if (h < 50) h = 50;
             
-            // Apply border width adjustment
+            
             if (config_.border_width > 0) {
                 if (w > static_cast<unsigned int>(2 * config_.border_width)) {
                     w -= 2 * config_.border_width;
@@ -280,26 +350,36 @@ void BSPLayout::visitNode(BSPNode* node, const Rect& bounds, Display* display, B
                 }
             }
             
-            // Move and resize window
-            XMoveResizeWindow(display, win, x, y, w, h);
             
-            // Set border width
+            if (render_pipeline_) {
+                render_pipeline_->moveWindow(win, x, y);
+                render_pipeline_->resizeWindow(win, w, h);
+            } else {
+                XMoveResizeWindow(display, win, x, y, w, h);
+            }
+            
+            
             XWindowChanges changes;
             changes.border_width = config_.border_width;
             XConfigureWindow(display, win, CWBorderWidth, &changes);
             
-            // Set border color based on focus state
+            
             unsigned long border_color = (node == focused_node) ? 
                 config_.focused_border_color : config_.unfocused_border_color;
             
-            XSetWindowBorder(display, win, border_color);
+            
+            if (render_pipeline_) {
+                render_pipeline_->drawBorder(win, border_color, config_.border_width);
+            } else {
+                XSetWindowBorder(display, win, border_color);
+            }
         }
     } else {
-        // Container: split and recurse
+        
         Rect left_bounds = bounds.subRect(true, node->getSplitType(), node->getRatio());
         Rect right_bounds = bounds.subRect(false, node->getSplitType(), node->getRatio());
         
-        // Apply inner gap between splits using cached effective_inner_gap
+        
         int split_gap = effective_inner_gap_;
         
         if (node->getSplitType() == SplitType::Vertical) {
@@ -325,38 +405,51 @@ void BSPLayout::visitNode(BSPNode* node, const Rect& bounds, Display* display, B
     }
 }
 
-// ============================================================================
-// MonocleLayout Implementation
-// ============================================================================
+
+
+
 
 void MonocleLayout::visit(BSPNode* root, const Rect& bounds, Display* display) {
     if (!root || !display) return;
     
-    // In monocle, only the focused window is shown fullscreen
+    
+    const Rect area = applyOuterGaps(bounds, 0);
+
+    
     BSPNode* focused = BSPNode::findFocusedInTree(root);
     
     if (focused && focused->isLeaf()) {
         Window win = focused->getWindow();
         if (win != None) {
-            XMoveResizeWindow(display, win, bounds.x, bounds.y, bounds.width, bounds.height);
+            if (render_pipeline_) {
+                render_pipeline_->moveWindow(win, area.x, area.y);
+                render_pipeline_->resizeWindow(win, area.width, area.height);
+            } else {
+                XMoveResizeWindow(display, win, area.x, area.y, area.width, area.height);
+            }
         }
     }
     
-    // Hide other windows (move them off-screen)
+    
     std::vector<Window> all_windows;
     all_windows.reserve(root->countWindows());
     root->collectWindows(all_windows);
     
     for (Window win : all_windows) {
         if (!focused || win != focused->getWindow()) {
-            XMoveWindow(display, win, -9999, -9999);
+            
+            if (render_pipeline_) {
+                render_pipeline_->moveWindow(win, -9999, -9999);
+            } else {
+                XMoveWindow(display, win, -9999, -9999);
+            }
         }
     }
 }
 
-// ============================================================================
-// MasterStackLayout Implementation
-// ============================================================================
+
+
+
 
 void MasterStackLayout::visit(BSPNode* root, const Rect& bounds, Display* display) {
     if (!root || !display) return;
@@ -364,78 +457,105 @@ void MasterStackLayout::visit(BSPNode* root, const Rect& bounds, Display* displa
     auto windows = collectWindows(root);
     if (windows.empty()) return;
     
-    // Find the focused window in the tree
+    
+    const Rect area = applyOuterGaps(bounds, config_.gap_size);
+
+    
     BSPNode* focused_node = BSPNode::findFocusedInTree(root);
     Window focused_win = focused_node ? focused_node->getWindow() : None;
     
-    // If no window is focused, default to the first window
+    
     if (focused_win == None && !windows.empty()) {
         focused_win = windows[0];
     }
     
     if (windows.size() == 1) {
-        // Single window takes full screen with border
-        XMoveResizeWindow(display, windows[0], 
-                         bounds.x, bounds.y, bounds.width, bounds.height);
         
-        // Set border width and color
+        if (render_pipeline_) {
+            render_pipeline_->moveWindow(windows[0], area.x, area.y);
+            render_pipeline_->resizeWindow(windows[0], area.width, area.height);
+        } else {
+            XMoveResizeWindow(display, windows[0], 
+                             area.x, area.y, area.width, area.height);
+        }
+        
         XWindowChanges changes;
         changes.border_width = config_.border_width;
         XConfigureWindow(display, windows[0], CWBorderWidth, &changes);
         
         unsigned long color = (windows[0] == focused_win) ? 
             config_.focused_border_color : config_.unfocused_border_color;
-        XSetWindowBorder(display, windows[0], color);
+        if (render_pipeline_) {
+            render_pipeline_->drawBorder(windows[0], color, config_.border_width);
+        } else {
+            XSetWindowBorder(display, windows[0], color);
+        }
         return;
     }
     
-    // Calculate master and stack areas
-    int master_width = static_cast<int>(bounds.width * config_.master_ratio);
-    int stack_width = bounds.width - master_width - config_.gap_size;
+    
+    int master_width = static_cast<int>(area.width * config_.master_ratio);
+    int stack_width = area.width - master_width - config_.gap_size;
     
     size_t num_master = std::min(static_cast<size_t>(config_.max_master), windows.size());
-    int master_height = bounds.height / static_cast<int>(num_master);
+    int master_height = area.height / static_cast<int>(num_master);
     
-    // Position master windows with border colors
+    
     for (size_t i = 0; i < num_master; ++i) {
         Window win = windows[i];
-        XMoveResizeWindow(display, win,
-                         bounds.x,
-                         bounds.y + static_cast<int>(i) * master_height,
-                         master_width - config_.gap_size / 2,
-                         master_height - config_.gap_size);
+        if (render_pipeline_) {
+            render_pipeline_->moveWindow(win, area.x, area.y + static_cast<int>(i) * master_height);
+            render_pipeline_->resizeWindow(win, master_width - config_.gap_size / 2, master_height - config_.gap_size);
+        } else {
+            XMoveResizeWindow(display, win,
+                             area.x,
+                             area.y + static_cast<int>(i) * master_height,
+                             master_width - config_.gap_size / 2,
+                             master_height - config_.gap_size);
+        }
         
-        // Set border width and color
         XWindowChanges changes;
         changes.border_width = config_.border_width;
         XConfigureWindow(display, win, CWBorderWidth, &changes);
         
         unsigned long color = (win == focused_win) ? 
             config_.focused_border_color : config_.unfocused_border_color;
-        XSetWindowBorder(display, win, color);
+        if (render_pipeline_) {
+            render_pipeline_->drawBorder(win, color, config_.border_width);
+        } else {
+            XSetWindowBorder(display, win, color);
+        }
     }
     
-    // Position stack windows with border colors
+    
     if (windows.size() > num_master) {
         size_t num_stack = windows.size() - num_master;
-        int stack_height = bounds.height / static_cast<int>(num_stack);
+        int stack_height = area.height / static_cast<int>(num_stack);
         
         for (size_t i = 0; i < num_stack; ++i) {
             Window win = windows[num_master + i];
-            XMoveResizeWindow(display, win,
-                             bounds.x + master_width + config_.gap_size,
-                             bounds.y + static_cast<int>(i) * stack_height,
-                             stack_width,
-                             stack_height - config_.gap_size);
+            if (render_pipeline_) {
+                render_pipeline_->moveWindow(win, area.x + master_width + config_.gap_size, area.y + static_cast<int>(i) * stack_height);
+                render_pipeline_->resizeWindow(win, stack_width, stack_height - config_.gap_size);
+            } else {
+                XMoveResizeWindow(display, win,
+                                 area.x + master_width + config_.gap_size,
+                                 area.y + static_cast<int>(i) * stack_height,
+                                 stack_width,
+                                 stack_height - config_.gap_size);
+            }
             
-            // Set border width and color
             XWindowChanges changes;
             changes.border_width = config_.border_width;
             XConfigureWindow(display, win, CWBorderWidth, &changes);
             
             unsigned long color = (win == focused_win) ? 
                 config_.focused_border_color : config_.unfocused_border_color;
-            XSetWindowBorder(display, win, color);
+            if (render_pipeline_) {
+                render_pipeline_->drawBorder(win, color, config_.border_width);
+            } else {
+                XSetWindowBorder(display, win, color);
+            }
         }
     }
 }
@@ -449,21 +569,24 @@ std::vector<Window> MasterStackLayout::collectWindows(BSPNode* root) {
     return windows;
 }
 
-// ============================================================================
-// CenteredMasterLayout Implementation
-// ============================================================================
+
+
+
 
 void CenteredMasterLayout::visit(BSPNode* root, const Rect& bounds, Display* display) {
     if (!root || !display) return;
     
     auto windows = collectWindows(root);
     if (windows.empty()) return;
+
     
-    // Find focused window
+    const Rect area = applyOuterGaps(bounds, config_.gap_size);
+    
+    
     BSPNode* focused_node = BSPNode::findFocusedInTree(root);
     Window focused_win = focused_node ? focused_node->getWindow() : None;
     
-    // If center_on_focus is enabled, move focused window to first position
+    
     if (config_.center_on_focus && focused_win != None && windows.size() > 1) {
         auto it = std::find(windows.begin(), windows.end(), focused_win);
         if (it != windows.end() && it != windows.begin()) {
@@ -471,68 +594,68 @@ void CenteredMasterLayout::visit(BSPNode* root, const Rect& bounds, Display* dis
         }
     }
     
-    // Single window takes full screen
+    
     if (windows.size() == 1) {
-        positionWindow(windows[0], bounds, display, windows[0] == focused_win);
+        positionWindow(windows[0], area, display, windows[0] == focused_win);
         return;
     }
     
-    // Calculate column widths
-    int total_width = static_cast<int>(bounds.width);
+    
+    int total_width = static_cast<int>(area.width);
     int center_width = static_cast<int>(total_width * config_.center_ratio);
     int side_width = (total_width - center_width) / 2;
     
-    // Adjust for gaps
+    
     int gap = config_.gap_size;
     center_width -= gap * 2;
     side_width -= gap;
     
-    // Determine center window count
+    
     size_t num_center = std::min(static_cast<size_t>(config_.max_center), windows.size());
     size_t remaining = windows.size() - num_center;
     size_t left_count = remaining / 2;
     size_t right_count = remaining - left_count;
     
-    // Position left stack
+    
     if (left_count > 0) {
-        int left_height = static_cast<int>(bounds.height) / static_cast<int>(left_count);
+        int left_height = static_cast<int>(area.height) / static_cast<int>(left_count);
         for (size_t i = 0; i < left_count; ++i) {
             Rect rect{
-                bounds.x + gap / 2,
-                bounds.y + static_cast<int>(i) * left_height,
+                area.x + gap / 2,
+                area.y + static_cast<int>(i) * left_height,
                 static_cast<unsigned int>(side_width),
                 static_cast<unsigned int>(left_height - gap)
             };
-            size_t win_idx = num_center + i;  // Windows after center go to left
+            size_t win_idx = num_center + i;  
             if (win_idx < windows.size()) {
                 positionWindow(windows[win_idx], rect, display, windows[win_idx] == focused_win);
             }
         }
     }
     
-    // Position center windows
-    int center_height = static_cast<int>(bounds.height) / static_cast<int>(num_center);
-    int center_x = bounds.x + side_width + gap;
+    
+    int center_height = static_cast<int>(area.height) / static_cast<int>(num_center);
+    int center_x = area.x + side_width + gap;
     
     for (size_t i = 0; i < num_center; ++i) {
         Rect rect{
             center_x,
-            bounds.y + static_cast<int>(i) * center_height,
+            area.y + static_cast<int>(i) * center_height,
             static_cast<unsigned int>(center_width),
             static_cast<unsigned int>(center_height - gap)
         };
         positionWindow(windows[i], rect, display, windows[i] == focused_win);
     }
     
-    // Position right stack
+    
     if (right_count > 0) {
-        int right_height = static_cast<int>(bounds.height) / static_cast<int>(right_count);
+        int right_height = static_cast<int>(area.height) / static_cast<int>(right_count);
         int right_x = center_x + center_width + gap;
         
         for (size_t i = 0; i < right_count; ++i) {
             Rect rect{
                 right_x,
-                bounds.y + static_cast<int>(i) * right_height,
+                area.y + static_cast<int>(i) * right_height,
                 static_cast<unsigned int>(side_width),
                 static_cast<unsigned int>(right_height - gap)
             };
@@ -557,59 +680,73 @@ void CenteredMasterLayout::positionWindow(Window win, const Rect& rect,
                                           Display* display, bool is_focused) {
     if (win == None || !display) return;
     
-    // Ensure minimum size
+    
     unsigned int w = rect.width;
     unsigned int h = rect.height;
     if (w < 50) w = 50;
     if (h < 50) h = 50;
     
-    XMoveResizeWindow(display, win, rect.x, rect.y, w, h);
     
-    // Set border
+    if (render_pipeline_) {
+        render_pipeline_->moveWindow(win, rect.x, rect.y);
+        render_pipeline_->resizeWindow(win, w, h);
+    } else {
+        XMoveResizeWindow(display, win, rect.x, rect.y, w, h);
+    }
+    
+    
     XWindowChanges changes;
     changes.border_width = config_.border_width;
     XConfigureWindow(display, win, CWBorderWidth, &changes);
     
     unsigned long color = is_focused ? 
         config_.focused_border_color : config_.unfocused_border_color;
-    XSetWindowBorder(display, win, color);
+    
+    if (render_pipeline_) {
+        render_pipeline_->drawBorder(win, color, config_.border_width);
+    } else {
+        XSetWindowBorder(display, win, color);
+    }
 }
 
-// ============================================================================
-// DynamicGridLayout Implementation
-// ============================================================================
+
+
+
 
 void DynamicGridLayout::visit(BSPNode* root, const Rect& bounds, Display* display) {
     if (!root || !display) return;
     
     auto windows = collectWindows(root);
     if (windows.empty()) return;
+
     
-    // Find focused window
+    const Rect area = applyOuterGaps(bounds, config_.gap_size);
+    
+    
     BSPNode* focused_node = BSPNode::findFocusedInTree(root);
     Window focused_win = focused_node ? focused_node->getWindow() : None;
     
-    // Single window takes full screen
+    
     if (windows.size() == 1) {
-        positionWindow(windows[0], bounds, display, windows[0] == focused_win);
+        positionWindow(windows[0], area, display, windows[0] == focused_win);
         return;
     }
     
-    // Calculate grid dimensions
-    auto [cols, rows] = calculateGridDimensions(static_cast<int>(windows.size()), bounds);
     
-    // Calculate cell dimensions
+    auto [cols, rows] = calculateGridDimensions(static_cast<int>(windows.size()), area);
+    
+    
     int gap = config_.gap_size;
-    int cell_width = (static_cast<int>(bounds.width) - (cols - 1) * gap) / cols;
-    int cell_height = (static_cast<int>(bounds.height) - (rows - 1) * gap) / rows;
+    int cell_width = (static_cast<int>(area.width) - (cols - 1) * gap) / cols;
+    int cell_height = (static_cast<int>(area.height) - (rows - 1) * gap) / rows;
     
-    // Position windows in grid
+    
     size_t idx = 0;
     for (int row = 0; row < rows && idx < windows.size(); ++row) {
         for (int col = 0; col < cols && idx < windows.size(); ++col) {
             Rect rect{
-                bounds.x + col * (cell_width + gap),
-                bounds.y + row * (cell_height + gap),
+                area.x + col * (cell_width + gap),
+                area.y + row * (cell_height + gap),
                 static_cast<unsigned int>(cell_width),
                 static_cast<unsigned int>(cell_height)
             };
@@ -623,41 +760,41 @@ std::pair<int, int> DynamicGridLayout::calculateGridDimensions(int count, const 
     if (count <= 0) return {1, 1};
     if (count == 1) return {1, 1};
     
-    // Calculate square root based dimensions
+    
     double sqrt_count = std::sqrt(static_cast<double>(count));
     int base_dim = static_cast<int>(std::floor(sqrt_count));
     
-    // Determine if we need more columns or rows
+    
     int cols, rows;
     
     if (config_.prefer_horizontal) {
-        // Prefer wider cells (more columns)
+        
         cols = base_dim + 1;
         rows = base_dim;
         
-        // Adjust if not enough cells
+        
         while (cols * rows < count) {
             ++cols;
         }
     } else {
-        // Prefer taller cells (more rows) - default
+        
         cols = base_dim;
         rows = base_dim + 1;
         
-        // Adjust if not enough cells
+        
         while (cols * rows < count) {
             ++rows;
         }
     }
     
-    // Check minimum cell size constraints
+    
     int max_cols = static_cast<int>(bounds.width) / config_.min_cell_width;
     int max_rows = static_cast<int>(bounds.height) / config_.min_cell_height;
     
     cols = std::min(cols, std::max(1, max_cols));
     rows = std::min(rows, std::max(1, max_rows));
     
-    // Ensure we have enough cells
+    
     while (cols * rows < count) {
         if (cols <= rows) {
             ++cols;
@@ -687,7 +824,13 @@ void DynamicGridLayout::positionWindow(Window win, const Rect& rect,
     if (w < 50) w = 50;
     if (h < 50) h = 50;
     
-    XMoveResizeWindow(display, win, rect.x, rect.y, w, h);
+    
+    if (render_pipeline_) {
+        render_pipeline_->moveWindow(win, rect.x, rect.y);
+        render_pipeline_->resizeWindow(win, w, h);
+    } else {
+        XMoveResizeWindow(display, win, rect.x, rect.y, w, h);
+    }
     
     XWindowChanges changes;
     changes.border_width = config_.border_width;
@@ -695,33 +838,40 @@ void DynamicGridLayout::positionWindow(Window win, const Rect& rect,
     
     unsigned long color = is_focused ? 
         config_.focused_border_color : config_.unfocused_border_color;
-    XSetWindowBorder(display, win, color);
+    
+    if (render_pipeline_) {
+        render_pipeline_->drawBorder(win, color, config_.border_width);
+    } else {
+        XSetWindowBorder(display, win, color);
+    }
 }
 
-// ============================================================================
-// DwindleSpiralLayout Implementation
-// ============================================================================
+
+
+
 
 void DwindleSpiralLayout::visit(BSPNode* root, const Rect& bounds, Display* display) {
     if (!root || !display) return;
     
     auto windows = collectWindows(root);
     if (windows.empty()) return;
+
     
-    // Find focused window
+    const Rect area = applyOuterGaps(bounds, config_.gap_size);
+    
+    
     BSPNode* focused_node = BSPNode::findFocusedInTree(root);
     Window focused_win = focused_node ? focused_node->getWindow() : None;
     
-    // Single window takes full screen
+    
     if (windows.size() == 1) {
-        positionWindow(windows[0], bounds, display, windows[0] == focused_win);
+        positionWindow(windows[0], area, display, windows[0] == focused_win);
         return;
     }
     
-    // Calculate spiral bounds for all windows
-    auto window_bounds = calculateSpiralBounds(static_cast<int>(windows.size()), bounds);
     
-    // Position each window
+    auto window_bounds = calculateSpiralBounds(static_cast<int>(windows.size()), area);
+    
     for (size_t i = 0; i < windows.size() && i < window_bounds.size(); ++i) {
         positionWindow(windows[i], window_bounds[i], display, windows[i] == focused_win);
     }
@@ -733,26 +883,26 @@ std::vector<Rect> DwindleSpiralLayout::calculateSpiralBounds(int count, const Re
     
     result.reserve(count);
     
-    // Start with full bounds
+    
     Rect current = bounds;
     
-    // Track split direction: true = vertical, false = horizontal
+    
     bool vertical = true;
     
-    // Track which side gets the next window (true = first half, false = second half)
+    
     bool first_half = true;
     
     double ratio = config_.initial_ratio;
     int gap = config_.gap_size;
     
     for (int i = 0; i < count - 1; ++i) {
-        // Calculate split
+        
         if (vertical) {
-            // Vertical split (left/right)
+            
             int split_pos = static_cast<int>(current.width * ratio);
             
             if (first_half) {
-                // First window gets left portion
+                
                 result.push_back(Rect{
                     current.x,
                     current.y,
@@ -760,11 +910,11 @@ std::vector<Rect> DwindleSpiralLayout::calculateSpiralBounds(int count, const Re
                     current.height
                 });
                 
-                // Remaining area is right portion
+                
                 current.x += split_pos + gap / 2;
                 current.width = static_cast<unsigned int>(current.width - split_pos - gap / 2);
             } else {
-                // First window gets right portion
+                
                 result.push_back(Rect{
                     current.x + static_cast<int>(current.width) - split_pos + gap / 2,
                     current.y,
@@ -772,15 +922,15 @@ std::vector<Rect> DwindleSpiralLayout::calculateSpiralBounds(int count, const Re
                     current.height
                 });
                 
-                // Remaining area is left portion
+                
                 current.width = static_cast<unsigned int>(current.width - split_pos - gap / 2);
             }
         } else {
-            // Horizontal split (top/bottom)
+            
             int split_pos = static_cast<int>(current.height * ratio);
             
             if (first_half) {
-                // First window gets top portion
+                
                 result.push_back(Rect{
                     current.x,
                     current.y,
@@ -788,11 +938,11 @@ std::vector<Rect> DwindleSpiralLayout::calculateSpiralBounds(int count, const Re
                     static_cast<unsigned int>(split_pos - gap / 2)
                 });
                 
-                // Remaining area is bottom portion
+                
                 current.y += split_pos + gap / 2;
                 current.height = static_cast<unsigned int>(current.height - split_pos - gap / 2);
             } else {
-                // First window gets bottom portion
+                
                 result.push_back(Rect{
                     current.x,
                     current.y + static_cast<int>(current.height) - split_pos + gap / 2,
@@ -800,23 +950,23 @@ std::vector<Rect> DwindleSpiralLayout::calculateSpiralBounds(int count, const Re
                     static_cast<unsigned int>(split_pos - gap / 2)
                 });
                 
-                // Remaining area is top portion
+                
                 current.height = static_cast<unsigned int>(current.height - split_pos - gap / 2);
             }
         }
         
-        // Toggle split direction for spiral effect
+        
         vertical = !vertical;
         
-        // Adjust ratio for Fibonacci-like progression
+        
         ratio = ratio - config_.ratio_increment;
         ratio = std::max(0.2, std::min(0.8, ratio));
         
-        // Alternate which side gets the window
+        
         first_half = !first_half;
     }
     
-    // Last window gets remaining space
+    
     result.push_back(current);
     
     return result;
@@ -840,7 +990,13 @@ void DwindleSpiralLayout::positionWindow(Window win, const Rect& rect,
     if (w < 50) w = 50;
     if (h < 50) h = 50;
     
-    XMoveResizeWindow(display, win, rect.x, rect.y, w, h);
+    
+    if (render_pipeline_) {
+        render_pipeline_->moveWindow(win, rect.x, rect.y);
+        render_pipeline_->resizeWindow(win, w, h);
+    } else {
+        XMoveResizeWindow(display, win, rect.x, rect.y, w, h);
+    }
     
     XWindowChanges changes;
     changes.border_width = config_.border_width;
@@ -848,24 +1004,222 @@ void DwindleSpiralLayout::positionWindow(Window win, const Rect& rect,
     
     unsigned long color = is_focused ? 
         config_.focused_border_color : config_.unfocused_border_color;
-    XSetWindowBorder(display, win, color);
+    
+    if (render_pipeline_) {
+        render_pipeline_->drawBorder(win, color, config_.border_width);
+    } else {
+        XSetWindowBorder(display, win, color);
+    }
 }
 
-// ============================================================================
-// TabbedStackedLayout Implementation
-// ============================================================================
+
+
+
+
+void GoldenRatioLayout::visit(BSPNode* root, const Rect& bounds, Display* display) {
+    if (!root || !display) return;
+    
+    auto windows = collectWindows(root);
+    if (windows.empty()) return;
+
+    
+    const Rect area = applyOuterGaps(bounds, config_.gap_size);
+    
+    
+    BSPNode* focused_node = BSPNode::findFocusedInTree(root);
+    Window focused_win = focused_node ? focused_node->getWindow() : None;
+    
+    
+    if (windows.size() == 1) {
+        positionWindow(windows[0], area, display, windows[0] == focused_win);
+        return;
+    }
+    
+    
+    auto window_bounds = calculateGoldenBounds(static_cast<int>(windows.size()), area);
+    
+    for (size_t i = 0; i < windows.size() && i < window_bounds.size(); ++i) {
+        positionWindow(windows[i], window_bounds[i], display, windows[i] == focused_win);
+    }
+}
+
+std::vector<Rect> GoldenRatioLayout::calculateGoldenBounds(int count, const Rect& bounds) {
+    std::vector<Rect> result;
+    if (count <= 0) return result;
+    
+    result.reserve(count);
+    
+    
+    Rect current = bounds;
+    
+    
+    
+    
+    const double golden_ratio = config_.golden_ratio;  
+    const double larger_portion = 1.0 / golden_ratio;   
+    const double smaller_portion = 1.0 - larger_portion; 
+    
+    
+    bool vertical = true;
+    
+    
+    bool use_larger_portion = true;
+    
+    int gap = config_.gap_size;
+    
+    for (int i = 0; i < count - 1; ++i) {
+        
+        if (vertical) {
+            
+            int split_pos;
+            if (use_larger_portion) {
+                split_pos = static_cast<int>(current.width * larger_portion);
+            } else {
+                split_pos = static_cast<int>(current.width * smaller_portion);
+            }
+            
+            
+            split_pos = std::max(split_pos, gap);
+            split_pos = std::min(split_pos, static_cast<int>(current.width) - gap);
+            
+            if (use_larger_portion) {
+                
+                result.push_back(Rect{
+                    current.x,
+                    current.y,
+                    static_cast<unsigned int>(split_pos - gap / 2),
+                    current.height
+                });
+                
+                
+                current.x += split_pos + gap / 2;
+                current.width = static_cast<unsigned int>(current.width - split_pos - gap / 2);
+            } else {
+                
+                result.push_back(Rect{
+                    current.x + static_cast<int>(current.width) - split_pos + gap / 2,
+                    current.y,
+                    static_cast<unsigned int>(split_pos - gap / 2),
+                    current.height
+                });
+                
+                
+                current.width = static_cast<unsigned int>(current.width - split_pos - gap / 2);
+            }
+        } else {
+            
+            int split_pos;
+            if (use_larger_portion) {
+                split_pos = static_cast<int>(current.height * larger_portion);
+            } else {
+                split_pos = static_cast<int>(current.height * smaller_portion);
+            }
+            
+            
+            split_pos = std::max(split_pos, gap);
+            split_pos = std::min(split_pos, static_cast<int>(current.height) - gap);
+            
+            if (use_larger_portion) {
+                
+                result.push_back(Rect{
+                    current.x,
+                    current.y,
+                    current.width,
+                    static_cast<unsigned int>(split_pos - gap / 2)
+                });
+                
+                
+                current.y += split_pos + gap / 2;
+                current.height = static_cast<unsigned int>(current.height - split_pos - gap / 2);
+            } else {
+                
+                result.push_back(Rect{
+                    current.x,
+                    current.y + static_cast<int>(current.height) - split_pos + gap / 2,
+                    current.width,
+                    static_cast<unsigned int>(split_pos - gap / 2)
+                });
+                
+                
+                current.height = static_cast<unsigned int>(current.height - split_pos - gap / 2);
+            }
+        }
+        
+        
+        if (config_.rotate_splits) {
+            vertical = !vertical;
+        }
+        
+        
+        if (config_.alternate_sides) {
+            use_larger_portion = !use_larger_portion;
+        }
+    }
+    
+    
+    result.push_back(current);
+    
+    return result;
+}
+
+std::vector<Window> GoldenRatioLayout::collectWindows(BSPNode* root) {
+    std::vector<Window> windows;
+    if (root) {
+        windows.reserve(root->countWindows());
+        root->collectWindows(windows);
+    }
+    return windows;
+}
+
+void GoldenRatioLayout::positionWindow(Window win, const Rect& rect, 
+                                         Display* display, bool is_focused) {
+    if (win == None || !display) return;
+    
+    unsigned int w = rect.width;
+    unsigned int h = rect.height;
+    if (w < 50) w = 50;
+    if (h < 50) h = 50;
+    
+    
+    if (render_pipeline_) {
+        render_pipeline_->moveWindow(win, rect.x, rect.y);
+        render_pipeline_->resizeWindow(win, w, h);
+    } else {
+        XMoveResizeWindow(display, win, rect.x, rect.y, w, h);
+    }
+    
+    XWindowChanges changes;
+    changes.border_width = config_.border_width;
+    XConfigureWindow(display, win, CWBorderWidth, &changes);
+    
+    unsigned long color = is_focused ? 
+        config_.focused_border_color : config_.unfocused_border_color;
+    
+    if (render_pipeline_) {
+        render_pipeline_->drawBorder(win, color, config_.border_width);
+    } else {
+        XSetWindowBorder(display, win, color);
+    }
+}
+
+
+
+
 
 void TabbedStackedLayout::visit(BSPNode* root, const Rect& bounds, Display* display) {
     if (!root || !display) return;
     
     auto windows = collectWindows(root);
     if (windows.empty()) return;
+
     
-    // Find focused window
+    const Rect area = applyOuterGaps(bounds, config_.gap_size);
+    
+    
     BSPNode* focused_node = BSPNode::findFocusedInTree(root);
     Window focused_win = focused_node ? focused_node->getWindow() : None;
     
-    // Find focused index
+    
     size_t focused_idx = 0;
     for (size_t i = 0; i < windows.size(); ++i) {
         if (windows[i] == focused_win) {
@@ -874,8 +1228,8 @@ void TabbedStackedLayout::visit(BSPNode* root, const Rect& bounds, Display* disp
         }
     }
     
-    // Calculate content area (excluding tab bar)
-    Rect content_bounds = bounds;
+    
+    Rect content_bounds = area;
     int tab_y_offset = config_.tab_height + config_.gap_size;
     
     if (config_.tab_position == TabPosition::Top) {
@@ -885,31 +1239,33 @@ void TabbedStackedLayout::visit(BSPNode* root, const Rect& bounds, Display* disp
         content_bounds.height -= tab_y_offset;
     }
     
-    // Render tab bar (this would typically be done by a separate UI component)
-    // For now, we just manage window positions
-    renderTabBar(windows, focused_idx, bounds, display);
     
-    // Position windows
+    renderTabBar(windows, focused_idx, area, display);
+    
+    
     if (config_.show_focused_only) {
-        // Only show focused window
         if (focused_win != None) {
             positionWindow(focused_win, content_bounds, display, true);
         }
-        
-        // Hide other windows
         for (Window win : windows) {
             if (win != focused_win) {
-                XMoveWindow(display, win, -9999, -9999);
+                if (render_pipeline_) {
+                    render_pipeline_->moveWindow(win, -9999, -9999);
+                } else {
+                    XMoveWindow(display, win, -9999, -9999);
+                }
             }
         }
     } else {
-        // Stack all windows at same position (with tab bar for switching)
         for (size_t i = 0; i < windows.size(); ++i) {
             if (i == focused_idx) {
                 positionWindow(windows[i], content_bounds, display, true);
             } else {
-                // Move non-focused windows off-screen or behind
-                XMoveWindow(display, windows[i], -9999, -9999);
+                if (render_pipeline_) {
+                    render_pipeline_->moveWindow(windows[i], -9999, -9999);
+                } else {
+                    XMoveWindow(display, windows[i], -9999, -9999);
+                }
             }
         }
     }
@@ -933,13 +1289,19 @@ void TabbedStackedLayout::positionWindow(Window win, const Rect& rect,
     if (w < 50) w = 50;
     if (h < 50) h = 50;
     
-    XMoveResizeWindow(display, win, rect.x, rect.y, w, h);
+    
+    if (render_pipeline_) {
+        render_pipeline_->moveWindow(win, rect.x, rect.y);
+        render_pipeline_->resizeWindow(win, w, h);
+    } else {
+        XMoveResizeWindow(display, win, rect.x, rect.y, w, h);
+    }
     
     XWindowChanges changes;
-    changes.border_width = 0;  // No border in tabbed mode
+    changes.border_width = 0;  
     XConfigureWindow(display, win, CWBorderWidth, &changes);
     
-    // Raise focused window to top
+    
     if (is_focused) {
         XRaiseWindow(display, win);
     }
@@ -949,11 +1311,11 @@ void TabbedStackedLayout::renderTabBar(const std::vector<Window>& windows,
                                        size_t focused_idx,
                                        const Rect& bounds, 
                                        Display* display) {
-    // Tab bar rendering would typically be done by a separate UI component
-    // or using X11 drawing primitives. For now, we just ensure proper
-    // window stacking order.
     
-    // Stack windows in reverse order so focused is on top
+    
+    
+    
+    
     for (size_t i = 0; i < windows.size(); ++i) {
         if (i != focused_idx) {
             XLowerWindow(display, windows[i]);
@@ -965,9 +1327,9 @@ void TabbedStackedLayout::renderTabBar(const std::vector<Window>& windows,
     }
 }
 
-// ============================================================================
-// InfiniteCanvasLayout Implementation
-// ============================================================================
+
+
+
 
 void InfiniteCanvasLayout::visit(BSPNode* root, const Rect& bounds, Display* display) {
     if (!root || !display) return;
@@ -975,22 +1337,26 @@ void InfiniteCanvasLayout::visit(BSPNode* root, const Rect& bounds, Display* dis
     auto windows = collectWindows(root);
     if (windows.empty()) return;
     
-    // Find focused window
+    
     BSPNode* focused_node = BSPNode::findFocusedInTree(root);
     Window focused_win = focused_node ? focused_node->getWindow() : None;
     
-    // Position each window based on its virtual coordinates
+    
     for (Window win : windows) {
-        // For now, use a simple grid placement
-        // In a full implementation, this would read from WindowStats
+        
+        
         bool is_focused = (win == focused_win);
         
         if (is_focused) {
-            // Focused window takes full screen
+            
             positionWindow(win, bounds, display, true);
         } else {
-            // Move other windows off-screen
-            XMoveWindow(display, win, config_.off_screen_x, config_.off_screen_y);
+            
+            if (render_pipeline_) {
+                render_pipeline_->moveWindow(win, config_.off_screen_x, config_.off_screen_y);
+            } else {
+                XMoveWindow(display, win, config_.off_screen_x, config_.off_screen_y);
+            }
         }
     }
 }
@@ -1008,26 +1374,26 @@ void InfiniteCanvasLayout::panViewport(int dx, int dy) {
 void InfiniteCanvasLayout::panToWindow(const WindowStats& stats, 
                                        unsigned int screen_width,
                                        unsigned int screen_height) {
-    // Calculate the real position of the window
+    
     int real_x = stats.getRealX(viewport_x_);
     int real_y = stats.getRealY(viewport_y_);
     
-    // Check if window is fully visible
+    
     bool visible = (real_x >= 0 && 
                     real_y >= 0 &&
                     real_x + static_cast<int>(stats.width) <= static_cast<int>(screen_width) &&
                     real_y + static_cast<int>(stats.height) <= static_cast<int>(screen_height));
     
     if (!visible) {
-        // Pan viewport to center the window
+        
         viewport_x_ = stats.virtual_x - static_cast<int>(screen_width) / 2;
         viewport_y_ = stats.virtual_y - static_cast<int>(screen_height) / 2;
     }
 }
 
 std::pair<int, int> InfiniteCanvasLayout::calculateNewWindowPosition(int window_count) {
-    // Simple grid placement for new windows
-    int cols = 3;  // 3 columns
+    
+    int cols = 3;  
     int row = window_count / cols;
     int col = window_count % cols;
     
@@ -1055,7 +1421,13 @@ void InfiniteCanvasLayout::positionWindow(Window win, const Rect& rect,
     if (w < 50) w = 50;
     if (h < 50) h = 50;
     
-    XMoveResizeWindow(display, win, rect.x, rect.y, w, h);
+    
+    if (render_pipeline_) {
+        render_pipeline_->moveWindow(win, rect.x, rect.y);
+        render_pipeline_->resizeWindow(win, w, h);
+    } else {
+        XMoveResizeWindow(display, win, rect.x, rect.y, w, h);
+    }
     
     XWindowChanges changes;
     changes.border_width = config_.border_width;
@@ -1063,20 +1435,25 @@ void InfiniteCanvasLayout::positionWindow(Window win, const Rect& rect,
     
     unsigned long color = is_focused ? 
         config_.focused_border_color : config_.unfocused_border_color;
-    XSetWindowBorder(display, win, color);
+    
+    if (render_pipeline_) {
+        render_pipeline_->drawBorder(win, color, config_.border_width);
+    } else {
+        XSetWindowBorder(display, win, color);
+    }
     
     if (is_focused) {
         XRaiseWindow(display, win);
     }
 }
 
-// ============================================================================
-// LayoutEngine Implementation
-// ============================================================================
+
+
+
 
 LayoutEngine::LayoutEngine() {
-    // Initialize with just 1 workspace by default
-    // Additional workspaces will be created dynamically for infinite workspaces
+    
+    
     WorkspaceData ws;
     auto bsp_layout = std::make_unique<BSPLayout>();
     bsp_layout->setGapConfig(&gap_config_);
@@ -1085,15 +1462,15 @@ LayoutEngine::LayoutEngine() {
 }
 
 void LayoutEngine::ensureWorkspace(int workspace) {
-    // Expand workspaces vector if needed for infinite workspaces
+    
     if (workspace >= static_cast<int>(workspaces_.size())) {
         size_t old_size = workspaces_.size();
-        size_t new_size = static_cast<size_t>(workspace) + 10;  // Pre-allocate extra
+        size_t new_size = static_cast<size_t>(workspace) + 10;  
         
         
         workspaces_.resize(new_size);
         
-        // Initialize new workspaces with default BSP layout
+        
         for (size_t i = old_size; i < new_size; ++i) {
             auto bsp_layout = std::make_unique<BSPLayout>();
             bsp_layout->setGapConfig(&gap_config_);
@@ -1102,16 +1479,16 @@ void LayoutEngine::ensureWorkspace(int workspace) {
     }
 }
 
-// ============================================================================
-// BSP Split - Add Window
-// ============================================================================
+
+
+
 
 BSPNode* LayoutEngine::addWindow(Window window) {
     if (current_workspace_ < 0) {
         return nullptr;
     }
     
-    // Ensure workspace exists (for infinite workspaces)
+    
     ensureWorkspace(current_workspace_);
     
     if (current_workspace_ >= static_cast<int>(workspaces_.size())) {
@@ -1122,7 +1499,7 @@ BSPNode* LayoutEngine::addWindow(Window window) {
     
     
     if (!ws.tree) {
-        // First window - becomes root
+        
         ws.tree = std::make_unique<BSPNode>(window);
         ws.tree->setFocused(true);
         focused_node_ = ws.tree.get();
@@ -1130,7 +1507,7 @@ BSPNode* LayoutEngine::addWindow(Window window) {
         return ws.tree.get();
     }
     
-    // Find node to split (focused node, or first leaf)
+    
     BSPNode* target = focused_node_;
     if (!target || !target->isLeaf()) {
         target = ws.tree->findFirstLeaf();
@@ -1138,7 +1515,7 @@ BSPNode* LayoutEngine::addWindow(Window window) {
     
     if (target) {
         splitLeaf(target, window);
-        invalidateLeavesCache();  // Tree structure changed
+        invalidateLeavesCache();  
         return focused_node_;
     }
     
@@ -1147,7 +1524,7 @@ BSPNode* LayoutEngine::addWindow(Window window) {
 
 SplitType LayoutEngine::determineSplitType() const {
     if (dwindle_mode_) {
-        // Dwindle mode: alternate split types for spiral effect
+        
         SplitType type = (split_counter_ % 2 == 0) ? 
             SplitType::Vertical : SplitType::Horizontal;
         return type;
@@ -1157,22 +1534,22 @@ SplitType LayoutEngine::determineSplitType() const {
 
 void LayoutEngine::splitLeaf(BSPNode* leaf, Window new_window) {
     
-    // Store old window
+    
     Window old_window = leaf->window_;
     
-    // Determine split type based on dwindle mode
+    
     SplitType split_type = SplitType::Vertical;
     
     if (dwindle_mode_) {
         BSPNode* parent = leaf->getParent();
         
         if (parent) {
-            // Dwindle: alternate split direction from parent
+            
             SplitType parent_split = parent->getSplitType();
             split_type = (parent_split == SplitType::Vertical) ? 
                 SplitType::Horizontal : SplitType::Vertical;
         } else {
-            // Root node - use screen aspect ratio
+            
             if (display_) {
                 int screen = DefaultScreen(display_);
                 int screen_width = DisplayWidth(display_, screen);
@@ -1183,36 +1560,36 @@ void LayoutEngine::splitLeaf(BSPNode* leaf, Window new_window) {
             }
         }
         
-        // Increment counter for next split
+        
         split_counter_++;
     } else {
         split_type = determineSplitType();
     }
     
-    // Convert leaf to container
+    
     leaf->window_ = None;
     leaf->split_type_ = split_type;
     leaf->ratio_ = default_ratio_;
     
-    // Create two new leaf children
+    
     leaf->left_ = std::make_unique<BSPNode>(old_window);
     leaf->left_->setParent(leaf);
     leaf->left_->setFocused(false);
     
     leaf->right_ = std::make_unique<BSPNode>(new_window);
     leaf->right_->setParent(leaf);
-    leaf->right_->setFocused(true);  // New window gets focus
+    leaf->right_->setFocused(true);  
     
-    // Update focused node to new window
+    
     if (focused_node_ == leaf || focused_node_ == nullptr) {
         focused_node_ = leaf->right_.get();
     }
     
 }
 
-// ============================================================================
-// BSP Removal - Promote Sibling
-// ============================================================================
+
+
+
 
 Window LayoutEngine::removeWindow(Window window) {
     
@@ -1231,7 +1608,7 @@ Window LayoutEngine::removeWindow(Window window) {
     }
     
     
-    // Special case: only one window (root)
+    
     if (leaf == ws.tree.get()) {
         ws.tree.reset();
         focused_node_ = nullptr;
@@ -1240,22 +1617,22 @@ Window LayoutEngine::removeWindow(Window window) {
         return None;
     }
     
-    // Promote sibling to parent's position
+    
     BSPNode* promoted = removeLeafAndPromoteSibling(leaf);
     
-    // Return the promoted window for focus
+    
     Window next_focus = promoted ? promoted->getWindow() : None;
     
     
-    // Decrement split counter for dwindle consistency
+    
     if (dwindle_mode_ && split_counter_ > 0) {
         split_counter_--;
     }
     
-    // Remove from bounds cache
+    
     window_bounds_.erase(window);
     
-    // Invalidate leaves cache since tree structure changed
+    
     invalidateLeavesCache();
     
     return next_focus;
@@ -1275,24 +1652,24 @@ BSPNode* LayoutEngine::removeLeafAndPromoteSibling(BSPNode* leaf) {
     }
     
     
-    // Clear the focused flag on the removed leaf
+    
     leaf->setFocused(false);
     
-    // Store pointer to sibling - this will be our return value
+    
     BSPNode* promoted_node = sibling;
     
     if (grandparent) {
-        // Parent is not root - replace parent with sibling in grandparent's tree
+        
         std::unique_ptr<BSPNode> sibling_owner;
         
-        // Extract sibling ownership from parent
+        
         if (parent->left_.get() == leaf) {
             sibling_owner = std::move(parent->right_);
         } else {
             sibling_owner = std::move(parent->left_);
         }
         
-        // Now replace parent with sibling in grandparent
+        
         if (grandparent->left_.get() == parent) {
             grandparent->left_ = std::move(sibling_owner);
             promoted_node = grandparent->left_.get();
@@ -1303,7 +1680,7 @@ BSPNode* LayoutEngine::removeLeafAndPromoteSibling(BSPNode* leaf) {
             grandparent->right_->setParent(grandparent);
         }
     } else {
-        // Parent is root - sibling becomes new root
+        
         auto& ws = workspaces_[current_workspace_];
         
         if (parent->left_.get() == leaf) {
@@ -1315,9 +1692,9 @@ BSPNode* LayoutEngine::removeLeafAndPromoteSibling(BSPNode* leaf) {
         promoted_node = ws.tree.get();
     }
     
-    // Update focused_node_ to the promoted sibling
+    
     if (focused_node_ == leaf || focused_node_ == nullptr) {
-        // If sibling is a container, find the first leaf to focus
+        
         if (promoted_node && !promoted_node->isLeaf()) {
             BSPNode* first_leaf = promoted_node->findFirstLeaf();
             if (first_leaf) {
@@ -1334,40 +1711,60 @@ BSPNode* LayoutEngine::removeLeafAndPromoteSibling(BSPNode* leaf) {
     return promoted_node;
 }
 
-// ============================================================================
-// Layout Application
-// ============================================================================
+
+
+
+
+void LayoutEngine::setFloatingWindows(const std::unordered_set<Window>& windows) {
+    floating_windows_ = windows;
+}
 
 void LayoutEngine::applyLayout(int workspace, const Rect& screen_bounds) {
     if (workspace < 0) return;
     
-    // Ensure workspace exists (for infinite workspaces)
+    
     ensureWorkspace(workspace);
     
     if (workspace >= static_cast<int>(workspaces_.size())) return;
     
     auto& ws = workspaces_[workspace];
     if (ws.tree && ws.layout) {
-        ws.layout->visit(ws.tree.get(), screen_bounds, display_);
         
-        // Update cached bounds for spatial navigation
+        
+        std::unique_ptr<BSPNode> filtered_tree;
+        if (!floating_windows_.empty()) {
+            filtered_tree = ws.tree->filterOut(floating_windows_);
+            if (filtered_tree) {
+                ws.layout->visit(filtered_tree.get(), screen_bounds, display_);
+            }
+        } else {
+            ws.layout->visit(ws.tree.get(), screen_bounds, display_);
+        }
+        
+        
         window_bounds_.clear();
         screen_bounds_ = screen_bounds;
         
-        // For non-BSP layouts, we need to calculate bounds based on actual positions
-        // Check if this is a BSP layout - if so, use tree-based calculation
+        
+        
         if (dynamic_cast<const BSPLayout*>(ws.layout.get())) {
-            if (ws.tree) {
-                calculateNodeBounds(ws.tree.get(), screen_bounds, window_bounds_);
+            
+            BSPNode* tree_for_bounds = filtered_tree ? filtered_tree.get() : ws.tree.get();
+            if (tree_for_bounds) {
+                calculateNodeBounds(tree_for_bounds, screen_bounds, window_bounds_);
             }
         } else {
-            // For other layouts, calculate bounds based on actual window positions
-            // by querying X11 for each window's geometry
+            
+            
             if (ws.tree && display_) {
                 std::vector<Window> windows;
                 ws.tree->collectWindows(windows);
                 
                 for (Window win : windows) {
+                    
+                    if (floating_windows_.find(win) != floating_windows_.end()) {
+                        continue;
+                    }
                     XWindowAttributes attrs;
                     if (XGetWindowAttributes(display_, win, &attrs)) {
                         window_bounds_[win] = Rect{
@@ -1395,7 +1792,7 @@ void LayoutEngine::calculateNodeBounds(BSPNode* node, const Rect& bounds,
     Rect left_bounds = bounds.subRect(true, node->getSplitType(), node->getRatio());
     Rect right_bounds = bounds.subRect(false, node->getSplitType(), node->getRatio());
     
-    // Apply gaps
+    
     if (node->getSplitType() == SplitType::Vertical) {
         if (left_bounds.width > static_cast<unsigned int>(gap_size_ / 2)) {
             left_bounds.width -= gap_size_ / 2;
@@ -1421,10 +1818,17 @@ void LayoutEngine::calculateNodeBounds(BSPNode* node, const Rect& bounds,
 void LayoutEngine::setLayout(int workspace, std::unique_ptr<LayoutVisitor> layout) {
     if (workspace < 0) return;
     
-    // Ensure workspace exists (for infinite workspaces)
+    
     ensureWorkspace(workspace);
     
     if (workspace < static_cast<int>(workspaces_.size())) {
+        
+        
+        if (dynamic_cast<BSPLayout*>(layout.get())) {
+            
+        }
+        
+        layout->setRenderPipeline(render_pipeline_);
         workspaces_[workspace].layout = std::move(layout);
     }
 }
@@ -1443,9 +1847,9 @@ const BSPNode* LayoutEngine::getTree(int workspace) const {
     return nullptr;
 }
 
-// ============================================================================
-// Focus Management
-// ============================================================================
+
+
+
 
 void LayoutEngine::focusWindow(Window window) {
     if (current_workspace_ < 0 || current_workspace_ >= static_cast<int>(workspaces_.size())) return;
@@ -1456,12 +1860,12 @@ void LayoutEngine::focusWindow(Window window) {
     BSPNode* node = ws.tree->findWindow(window);
     if (!node) return;
     
-    // Clear previous focus
+    
     if (focused_node_) {
         focused_node_->setFocused(false);
     }
     
-    // Set new focus
+    
     focused_node_ = node;
     node->setFocused(true);
     
@@ -1482,7 +1886,7 @@ Window LayoutEngine::moveFocus(const std::string& direction) {
     BSPNode* next = findSpatialNeighbor(focused_node_, direction);
     if (!next) return None;
     
-    // Update focus
+    
     focused_node_->setFocused(false);
     next->setFocused(true);
     focused_node_ = next;
@@ -1495,10 +1899,10 @@ BSPNode* LayoutEngine::findSpatialNeighbor(BSPNode* from, const std::string& dir
     
     Window from_window = from->getWindow();
     
-    // Get cached bounds for this window
+    
     auto it = window_bounds_.find(from_window);
     if (it == window_bounds_.end()) {
-        // Fallback to tree-order navigation
+        
         auto& ws = workspaces_[current_workspace_];
         std::vector<Window> windows;
         ws.tree->collectWindows(windows);
@@ -1520,14 +1924,14 @@ BSPNode* LayoutEngine::findSpatialNeighbor(BSPNode* from, const std::string& dir
     
     Rect from_bounds = it->second;
     
-    // Find the nearest window in the specified direction
+    
     BSPNode* nearest = nullptr;
     int min_distance = std::numeric_limits<int>::max();
     
     for (const auto& [window, bounds] : window_bounds_) {
         if (window == from_window) continue;
         
-        // Check if this window is in the correct direction
+        
         bool in_direction = false;
         int distance = std::numeric_limits<int>::max();
         
@@ -1535,11 +1939,11 @@ BSPNode* LayoutEngine::findSpatialNeighbor(BSPNode* from, const std::string& dir
             if (bounds.right() <= from_bounds.left()) {
                 in_direction = true;
                 distance = from_bounds.left() - bounds.right();
-                // Add vertical alignment bonus
+                
                 int v_overlap = std::min(bounds.bottom(), from_bounds.bottom()) - 
                                std::max(bounds.top(), from_bounds.top());
                 if (v_overlap > 0) {
-                    distance -= v_overlap;  // Prefer vertically aligned windows
+                    distance -= v_overlap;  
                 }
             }
         } else if (direction == "right") {
@@ -1559,7 +1963,7 @@ BSPNode* LayoutEngine::findSpatialNeighbor(BSPNode* from, const std::string& dir
                 int h_overlap = std::min(bounds.right(), from_bounds.right()) - 
                                std::max(bounds.left(), from_bounds.left());
                 if (h_overlap > 0) {
-                    distance -= h_overlap;  // Prefer horizontally aligned windows
+                    distance -= h_overlap;  
                 }
             }
         } else if (direction == "down") {
@@ -1593,12 +1997,12 @@ void LayoutEngine::swapFocused(const std::string& direction) {
     BSPNode* neighbor = findSpatialNeighbor(focused_node_, direction);
     if (!neighbor || !neighbor->isLeaf()) return;
     
-    // Swap windows
+    
     Window temp = focused_node_->window_;
     focused_node_->window_ = neighbor->window_;
     neighbor->window_ = temp;
     
-    // Update bounds cache
+    
     std::swap(window_bounds_[focused_node_->window_], window_bounds_[neighbor->window_]);
     
 }
@@ -1611,7 +2015,7 @@ bool LayoutEngine::swapWindows(Window window1, Window window2) {
     auto& ws = workspaces_[current_workspace_];
     if (!ws.tree) return false;
     
-    // Find both nodes in the tree
+    
     BSPNode* node1 = ws.tree->findWindow(window1);
     BSPNode* node2 = ws.tree->findWindow(window2);
     
@@ -1619,17 +2023,17 @@ bool LayoutEngine::swapWindows(Window window1, Window window2) {
         return false;
     }
     
-    // Don't swap if same window
+    
     if (node1 == node2) {
         return false;
     }
     
-    // Swap windows
+    
     Window temp = node1->window_;
     node1->window_ = node2->window_;
     node2->window_ = temp;
     
-    // Update bounds cache
+    
     std::swap(window_bounds_[node1->window_], window_bounds_[node2->window_]);
     
     return true;
@@ -1639,9 +2043,9 @@ void LayoutEngine::resizeFocused(double delta) {
     if (!focused_node_) return;
     
     BSPNode* parent = focused_node_->getParent();
-    if (!parent) return;  // Root has no ratio to adjust
+    if (!parent) return;  
     
-    // Determine if focused is left or right child
+    
     bool is_left = (parent->left_.get() == focused_node_);
     
     double new_ratio = parent->getRatio();
@@ -1652,6 +2056,41 @@ void LayoutEngine::resizeFocused(double delta) {
     }
     
     parent->setRatio(new_ratio);
+}
+
+bool LayoutEngine::resizeWindow(Window window, double delta) {
+    if (current_workspace_ < 0 || current_workspace_ >= static_cast<int>(workspaces_.size())) {
+        return false;
+    }
+    
+    auto& ws = workspaces_[current_workspace_];
+    if (!ws.tree) {
+        return false;
+    }
+    
+    
+    BSPNode* node = ws.tree->findWindow(window);
+    if (!node) {
+        return false;
+    }
+    
+    BSPNode* parent = node->getParent();
+    if (!parent) {
+        return false;  
+    }
+    
+    
+    bool is_left = (parent->left_.get() == node);
+    
+    double new_ratio = parent->getRatio();
+    if (is_left) {
+        new_ratio += delta;
+    } else {
+        new_ratio -= delta;
+    }
+    
+    parent->setRatio(new_ratio);
+    return true;
 }
 
 void LayoutEngine::toggleSplitDirection() {
@@ -1671,13 +2110,13 @@ void LayoutEngine::setCurrentWorkspace(int workspace) {
         return;
     }
     
-    // Ensure workspace exists (for infinite workspaces)
+    
     ensureWorkspace(workspace);
     
     if (workspace < static_cast<int>(workspaces_.size())) {
         current_workspace_ = workspace;
         
-        // Update focused node to this workspace's tree
+        
         auto& ws = workspaces_[current_workspace_];
         if (ws.tree) {
             focused_node_ = ws.tree->findFocused();
@@ -1689,7 +2128,7 @@ void LayoutEngine::setCurrentWorkspace(int workspace) {
             focused_node_ = nullptr;
         }
         
-        // Clear bounds cache for new workspace
+        
         window_bounds_.clear();
     }
 }
@@ -1744,29 +2183,48 @@ void LayoutEngine::updateBorderColors() {
     auto& ws = workspaces_[current_workspace_];
     if (!ws.tree) return;
     
-    // Get all windows in the tree
+    
     std::vector<Window> windows;
     ws.tree->collectWindows(windows);
     
-    // Get the currently focused window
+    
     Window focused_win = getFocusedWindow();
     
-    // Update border color for each window
+    
     for (Window win : windows) {
-        unsigned long color = (win == focused_win) ? 
-            focused_border_color_ : unfocused_border_color_;
-        XSetWindowBorder(display_, win, color);
+        unsigned long color;
+        
+        if (resize_highlight_active_ && win == resize_highlight_window_) {
+            color = resize_border_color_;
+        } else {
+            color = (win == focused_win) ? 
+                focused_border_color_ : unfocused_border_color_;
+        }
+        
+        if (render_pipeline_) {
+            render_pipeline_->drawBorder(win, color, border_width_);
+        } else {
+            XSetWindowBorder(display_, win, color);
+        }
     }
     
     XFlush(display_);
 }
 
-// ============================================================================
-// Layout Cycling Implementation
-// ============================================================================
+void LayoutEngine::setResizeBorderHighlight(bool active, Window window) {
+    resize_highlight_active_ = active;
+    resize_highlight_window_ = window;
+    
+    
+    updateBorderColors();
+}
+
+
+
+
 
 std::string LayoutEngine::cycleLayout(bool forward) {
-    // Define the order of layouts for cycling
+    
     static const std::vector<LayoutMode> layout_order = {
         LayoutMode::BSP,
         LayoutMode::Monocle,
@@ -1774,21 +2232,22 @@ std::string LayoutEngine::cycleLayout(bool forward) {
         LayoutMode::CenteredMaster,
         LayoutMode::DynamicGrid,
         LayoutMode::DwindleSpiral,
+        LayoutMode::GoldenRatio,
         LayoutMode::TabbedStacked
     };
     
-    // Get current layout mode
+    
     auto current_mode = getCurrentLayoutMode();
     if (!current_mode) {
         current_mode = LayoutMode::BSP;
     }
     
-    // Find current mode in the order
+    
     auto it = std::find(layout_order.begin(), layout_order.end(), *current_mode);
     size_t current_idx = (it != layout_order.end()) ? 
         std::distance(layout_order.begin(), it) : 0;
     
-    // Calculate next index based on direction
+    
     size_t next_idx;
     if (forward) {
         next_idx = (current_idx + 1) % layout_order.size();
@@ -1798,7 +2257,7 @@ std::string LayoutEngine::cycleLayout(bool forward) {
     
     LayoutMode next_mode = layout_order[next_idx];
     
-    // Set the new layout
+    
     setLayoutMode(current_workspace_, next_mode);
     
     return layoutModeToString(next_mode);
@@ -1811,13 +2270,13 @@ std::optional<LayoutMode> LayoutEngine::getCurrentLayoutMode(int workspace) cons
         return std::nullopt;
     }
     
-    // Try to identify the current layout type by dynamic_cast
+    
     const auto& layout = workspaces_[ws].layout;
     if (!layout) {
-        return LayoutMode::BSP;  // Default
+        return LayoutMode::BSP;  
     }
     
-    // Check layout type using dynamic_cast
+    
     if (dynamic_cast<const BSPLayout*>(layout.get())) {
         return LayoutMode::BSP;
     }
@@ -1836,6 +2295,9 @@ std::optional<LayoutMode> LayoutEngine::getCurrentLayoutMode(int workspace) cons
     if (dynamic_cast<const DwindleSpiralLayout*>(layout.get())) {
         return LayoutMode::DwindleSpiral;
     }
+    if (dynamic_cast<const GoldenRatioLayout*>(layout.get())) {
+        return LayoutMode::GoldenRatio;
+    }
     if (dynamic_cast<const TabbedStackedLayout*>(layout.get())) {
         return LayoutMode::TabbedStacked;
     }
@@ -1846,7 +2308,7 @@ std::optional<LayoutMode> LayoutEngine::getCurrentLayoutMode(int workspace) cons
 void LayoutEngine::setLayoutMode(int workspace, LayoutMode mode) {
     if (workspace < 0) return;
     
-    // Ensure workspace exists (for infinite workspaces)
+    
     ensureWorkspace(workspace);
     
     if (workspace >= static_cast<int>(workspaces_.size())) {
@@ -1906,6 +2368,15 @@ void LayoutEngine::setLayoutMode(int workspace, LayoutMode mode) {
             layout = std::make_unique<DwindleSpiralLayout>(config);
             break;
         }
+        case LayoutMode::GoldenRatio: {
+            GoldenRatioLayout::Config config;
+            config.gap_size = gap_size_;
+            config.border_width = border_width_;
+            config.focused_border_color = focused_border_color_;
+            config.unfocused_border_color = unfocused_border_color_;
+            layout = std::make_unique<GoldenRatioLayout>(config);
+            break;
+        }
         case LayoutMode::TabbedStacked: {
             TabbedStackedLayout::Config config;
             config.border_width = border_width_;
@@ -1925,13 +2396,14 @@ void LayoutEngine::setLayoutMode(int workspace, LayoutMode mode) {
     }
     
     if (layout) {
+        layout->setGapConfig(&gap_config_);  
         workspaces_[workspace].layout = std::move(layout);
     }
 }
 
-// ============================================================================
-// Infinite Canvas Implementation
-// ============================================================================
+
+
+
 
 WindowStats* LayoutEngine::getWindowStats(Window window) {
     auto it = window_stats_.find(window);
@@ -1970,31 +2442,31 @@ void LayoutEngine::panToFocusedWindow(unsigned int screen_width, unsigned int sc
     auto* stats = getWindowStats(focused);
     if (!stats) return;
     
-    // Check if window is visible in current viewport
+    
     if (!stats->isVisibleInViewport(viewport_x_, viewport_y_, screen_width, screen_height)) {
-        // Pan to center the window
+        
         viewport_x_ = stats->virtual_x - static_cast<int>(screen_width) / 2;
         viewport_y_ = stats->virtual_y - static_cast<int>(screen_height) / 2;
     }
 }
 
-// ============================================================================
-// Pointer Warping Implementation
-// ============================================================================
+
+
+
 
 bool LayoutEngine::warpPointerToWindow(Window window) {
     if (!display_ || window == None) return false;
     
-    // Get window geometry
+    
     XWindowAttributes attrs;
     if (!XGetWindowAttributes(display_, window, &attrs)) {
         return false;
     }
     
-    // Set warping flag to suppress focus-follows-mouse
+    
     is_warping_ = true;
     
-    // Warp pointer to center of window
+    
     XWarpPointer(display_, None, window, 0, 0, 0, 0,
                  static_cast<int>(attrs.width / 2),
                  static_cast<int>(attrs.height / 2));
@@ -2005,19 +2477,19 @@ bool LayoutEngine::warpPointerToWindow(Window window) {
     return true;
 }
 
-// ============================================================================
-// Auto-Expand Logic Implementation
-// ============================================================================
+
+
+
 
 bool LayoutEngine::wouldViolateMinSize(const Rect& bounds, SplitType split_type) const {
     using namespace layout_constants;
     
     if (split_type == SplitType::Vertical) {
-        // Vertical split divides width
+        
         int min_total_width = MIN_WINDOW_WIDTH * 2 + gap_size_;
         return static_cast<int>(bounds.width) < min_total_width;
     } else {
-        // Horizontal split divides height
+        
         int min_total_height = MIN_WINDOW_HEIGHT * 2 + gap_size_;
         return static_cast<int>(bounds.height) < min_total_height;
     }
@@ -2026,7 +2498,7 @@ bool LayoutEngine::wouldViolateMinSize(const Rect& bounds, SplitType split_type)
 bool LayoutEngine::canSplitWithoutViolation(BSPNode* node) const {
     if (!node || !node->isLeaf()) return false;
     
-    // Get the bounds for this node
+    
     auto it = window_bounds_.find(node->getWindow());
     if (it == window_bounds_.end()) return false;
     
@@ -2056,9 +2528,9 @@ int LayoutEngine::expandCanvasForSplit(Rect& bounds, SplitType split_type) {
     return expansion;
 }
 
-// ============================================================================
-// DFS Focus Wrapping Implementation
-// ============================================================================
+
+
+
 
 void LayoutEngine::rebuildLeavesCache() const {
     cached_leaves_.clear();
@@ -2077,7 +2549,7 @@ void LayoutEngine::collectLeavesDFSHelper(BSPNode* node, std::vector<BSPNode*>& 
     if (node->isLeaf()) {
         leaves.push_back(node);
     } else {
-        // DFS: left first, then right
+        
         collectLeavesDFSHelper(node->getLeft(), leaves);
         collectLeavesDFSHelper(node->getRight(), leaves);
     }
@@ -2104,7 +2576,7 @@ Window LayoutEngine::focusNextLeafDFS() {
     
     if (cached_leaves_.empty()) return None;
     
-    // Find current focused leaf index
+    
     size_t current_idx = 0;
     for (size_t i = 0; i < cached_leaves_.size(); ++i) {
         if (cached_leaves_[i] == focused_node_) {
@@ -2113,20 +2585,20 @@ Window LayoutEngine::focusNextLeafDFS() {
         }
     }
     
-    // Move to next leaf
+    
     size_t next_idx = (current_idx + 1) % cached_leaves_.size();
     
     if (focus_wrap_mode_ == FocusWrapMode::Traditional || next_idx != 0) {
-        // Traditional: wrap around
-        // Or: not at the end yet
+        
+        
         BSPNode* next_node = cached_leaves_[next_idx];
         if (next_node) {
             focusWindow(next_node->getWindow());
             return next_node->getWindow();
         }
     }
-    // FocusWrapMode::Infinite at edge: could create placeholder
-    // For now, just wrap like traditional
+    
+    
     
     return None;
 }
@@ -2138,7 +2610,7 @@ Window LayoutEngine::focusPrevLeafDFS() {
     
     if (cached_leaves_.empty()) return None;
     
-    // Find current focused leaf index
+    
     size_t current_idx = 0;
     for (size_t i = 0; i < cached_leaves_.size(); ++i) {
         if (cached_leaves_[i] == focused_node_) {
@@ -2147,7 +2619,7 @@ Window LayoutEngine::focusPrevLeafDFS() {
         }
     }
     
-    // Move to previous leaf
+    
     size_t prev_idx = (current_idx == 0) ? cached_leaves_.size() - 1 : current_idx - 1;
     
     BSPNode* prev_node = cached_leaves_[prev_idx];
@@ -2159,25 +2631,25 @@ Window LayoutEngine::focusPrevLeafDFS() {
     return None;
 }
 
-// ============================================================================
-// Workspace Teleportation Implementation
-// ============================================================================
+
+
+
 
 void LayoutEngine::teleportToWorkspace(int workspace_id) {
-    // Ensure workspace exists
+    
     ensureWorkspace(workspace_id);
     
-    // Save current workspace camera position
+    
     if (current_workspace_ >= 0 && current_workspace_ < static_cast<int>(workspace_nodes_.size())) {
         auto cam_pos = camera_.getOffset();
         workspace_nodes_[current_workspace_].saved_camera_x = cam_pos.first;
         workspace_nodes_[current_workspace_].saved_camera_y = cam_pos.second;
     }
     
-    // Switch to new workspace
+    
     setCurrentWorkspace(workspace_id);
     
-    // Restore camera position for new workspace
+    
     const WorkspaceNode* node = getWorkspaceNode(workspace_id);
     if (node) {
         camera_.teleportTo(node->saved_camera_x, node->saved_camera_y);
@@ -2210,12 +2682,12 @@ int LayoutEngine::createWorkspaceAt(int64_t origin_x, int64_t origin_y) {
     return new_id;
 }
 
-// ============================================================================
-// Spatial Grid Update Implementation
-// ============================================================================
+
+
+
 
 void LayoutEngine::updateSpatialGrid() {
-    // Clear and rebuild spatial grid from window stats
+    
     spatial_grid_.clear();
     
     for (const auto& [window, stats] : window_stats_) {
@@ -2224,4 +2696,4 @@ void LayoutEngine::updateSpatialGrid() {
     }
 }
 
-} // namespace pblank
+} 

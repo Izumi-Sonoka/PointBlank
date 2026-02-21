@@ -18,7 +18,7 @@
  * @version 1.0.0
  */
 
-// Include the extension API - this is the only required header
+
 #include "../ExtensionAPI.hpp"
 
 #include <iostream>
@@ -26,9 +26,9 @@
 #include <chrono>
 #include <algorithm>
 
-// ============================================================================
-// Example Extension Class
-// ============================================================================
+
+
+
 
 /**
  * @brief Example extension demonstrating the v2.0 API
@@ -40,40 +40,40 @@
  */
 class ExampleExtension : public pblank::IExtension {
 public:
-    // ========================================================================
-    // Metadata
-    // ========================================================================
+    
+    
+    
     
     const pblank::ExtensionInfo* getInfo() const override {
         static pblank::ExtensionInfo info = 
             PB_DEFINE_EXTENSION_INFO(
-                "ExampleExtension",           // Name
-                "1.0.0",                      // Version
-                "Point Blank Team",           // Author
+                "ExampleExtension",           
+                "1.0.0",                      
+                "Point Blank Team",           
                 "Example extension demonstrating the v2.0 API with "
-                "event handling and custom layout support",  // Description
+                "event handling and custom layout support",  
                 pblank::ExtensionCapability::LayoutProvider | 
-                pblank::ExtensionCapability::Performance,    // Capabilities
-                pblank::ExtensionPriority::Normal            // Priority
+                pblank::ExtensionCapability::Performance,    
+                pblank::ExtensionPriority::Normal            
             );
         return &info;
     }
     
-    // ========================================================================
-    // Lifecycle
-    // ========================================================================
+    
+    
+    
     
     pblank::Result initialize(const pblank::ExtensionContext* ctx) override {
         if (!ctx || !ctx->display) {
             return pblank::Result::InvalidArgument;
         }
         
-        // Store context for later use
+        
         display_ = ctx->display;
         root_ = ctx->root;
         screen_ = ctx->screen;
         
-        // Initialize performance tracking
+        
         init_time_ = std::chrono::steady_clock::now();
         events_handled_ = 0;
         
@@ -98,14 +98,14 @@ public:
         return pblank::Result::Success;
     }
     
-    // ========================================================================
-    // Event Subscription
-    // ========================================================================
+    
+    
+    
     
     pblank::EventMask getEventMask() const override {
         pblank::EventMask mask;
         
-        // Subscribe to events we want to handle
+        
         mask.set(pblank::EventType::WindowMap);
         mask.set(pblank::EventType::WindowUnmap);
         mask.set(pblank::EventType::WindowFocus);
@@ -115,20 +115,20 @@ public:
         return mask;
     }
     
-    // ========================================================================
-    // Event Handlers
-    // ========================================================================
+    
+    
+    
     
     bool onWindowMap(const pblank::WindowHandle* window) override {
         ++events_handled_;
         
-        // Example: Log window creation
+        
         std::cout << "[ExampleExtension] Window mapped: " 
                   << window->x11_window 
                   << " on workspace " << window->workspace_id
                   << std::endl;
         
-        // Return true to allow event propagation to other extensions
+        
         return true;
     }
     
@@ -171,16 +171,16 @@ public:
         return true;
     }
     
-    // ========================================================================
-    // Layout Provider Interface
-    // ========================================================================
+    
+    
+    
     
     bool hasLayoutProvider() const override {
-        return true;  // We provide a custom layout
+        return true;  
     }
     
     const char* getLayoutName() const override {
-        return "columns";  // Our custom layout name
+        return "columns";  
     }
     
     pblank::Result calculateLayout(const pblank::LayoutContext* ctx,
@@ -189,13 +189,13 @@ public:
             return pblank::Result::InvalidArgument;
         }
         
-        // Ensure output buffer is large enough
+        
         if (output->capacity < ctx->window_count) {
             return pblank::Result::InvalidArgument;
         }
         
-        // "Columns" layout: arrange windows in vertical columns
-        // Each window gets equal width, full height
+        
+        
         
         uint32_t count = ctx->window_count;
         int16_t screen_w = ctx->screen_bounds.width;
@@ -203,10 +203,10 @@ public:
         int16_t x = ctx->screen_bounds.x;
         int16_t y = ctx->screen_bounds.y;
         
-        // Calculate column width (equal distribution)
+        
         uint16_t col_width = screen_w / count;
         
-        // Gap between windows
+        
         constexpr uint16_t GAP = 10;
         
         for (uint32_t i = 0; i < count; ++i) {
@@ -217,7 +217,7 @@ public:
             rect.width = col_width - GAP;
             rect.height = screen_h - GAP;
             
-            // Adjust last column to fill remaining space
+            
             if (i == count - 1) {
                 rect.width = screen_w - (rect.x - x) - GAP / 2;
             }
@@ -228,49 +228,49 @@ public:
         return pblank::Result::Success;
     }
     
-    // ========================================================================
-    // Performance Monitoring
-    // ========================================================================
+    
+    
+    
     
     pblank::Nanoseconds getAverageProcessingTime() const override {
         if (events_handled_ == 0) {
             return pblank::Nanoseconds(0);
         }
         
-        // Return average time per event
+        
         auto total_ns = total_processing_time_ns_.load();
         return pblank::Nanoseconds(total_ns / events_handled_);
     }
     
     bool isHealthy() const override {
-        // Extension is healthy if it's still processing events
-        // and not taking too long per event
+        
+        
         auto avg_time = getAverageProcessingTime();
-        return avg_time.count() < 1000000;  // Less than 1ms average
+        return avg_time.count() < 1000000;  
     }
     
 private:
-    // X11 resources
+    
     Display* display_{nullptr};
     Window root_{0};
     int screen_{0};
     
-    // Performance tracking
+    
     std::chrono::steady_clock::time_point init_time_;
     std::atomic<uint64_t> events_handled_{0};
     std::atomic<uint64_t> total_processing_time_ns_{0};
 };
 
-// ============================================================================
-// Extension Factory Functions
-// ============================================================================
 
-// Use the provided macro to declare the extension exports
+
+
+
+
 PB_DECLARE_EXTENSION(ExampleExtension)
 
-// ============================================================================
-// Alternative Manual Export (for reference)
-// ============================================================================
+
+
+
 
 /*
  * The PB_DECLARE_EXTENSION macro expands to the following:
@@ -291,9 +291,9 @@ PB_DECLARE_EXTENSION(ExampleExtension)
  * }
  */
 
-// ============================================================================
-// Build Instructions
-// ============================================================================
+
+
+
 
 /*
  * To build this extension as a shared library:

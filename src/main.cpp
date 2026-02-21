@@ -7,20 +7,22 @@
 #include <filesystem>
 #include <optional>
 #include <sys/stat.h>
+#include <cairo.h>
+#include <malloc.h>
 
 using namespace pblank;
 
-// Global pointer for signal handling
+
 WindowManager* g_wm = nullptr;
 
-// Custom config path (optional)
+
 static std::optional<std::filesystem::path> custom_config_path;
 
 void signalHandler(int signal) {
     if (signal == SIGINT || signal == SIGTERM) {
         std::cout << "\nReceived shutdown signal, exiting gracefully..." << std::endl;
         
-        // Shutdown X server if we started it
+        
         XServerManager::shutdownXServer();
         
         std::exit(0);
@@ -54,7 +56,7 @@ void printVersion() {
 void ensureConfigDirectories() {
     std::filesystem::path config_base;
     
-    // Use XDG_CONFIG_HOME if set, otherwise default to ~/.config
+    
     const char* xdg_config = std::getenv("XDG_CONFIG_HOME");
     if (xdg_config != nullptr && xdg_config[0] != '\0') {
         config_base = std::filesystem::path(xdg_config);
@@ -68,11 +70,11 @@ void ensureConfigDirectories() {
         }
     }
     
-    // Define required directories
+    
     std::filesystem::path pblank_dir = config_base / "pblank";
     std::filesystem::path extensions_dir = pblank_dir / "extensions";
-    std::filesystem::path pb_ext_dir = extensions_dir / "pb";      // For #import
-    std::filesystem::path user_ext_dir = extensions_dir / "user";  // For #include
+    std::filesystem::path pb_ext_dir = extensions_dir / "pb";      
+    std::filesystem::path user_ext_dir = extensions_dir / "user";  
     
     std::vector<std::filesystem::path> dirs = {
         pblank_dir,
@@ -98,7 +100,7 @@ int main(int argc, char* argv[]) {
     bool auto_start_x = true;
     std::optional<std::string> custom_display;
     
-    // Parse command line arguments
+    
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         
@@ -135,17 +137,17 @@ int main(int argc, char* argv[]) {
         }
     }
     
-    // Setup signal handlers
+    
     std::signal(SIGINT, signalHandler);
     std::signal(SIGTERM, signalHandler);
     
-    // Ensure required configuration directories exist
+    
     ensureConfigDirectories();
     
     std::cout << R"(
     ____        _       __          ____  __            __
    / __ \____  (_)___  / /_   _    / __ )/ /___ _____  / /__
-  / /_/ / __ \/ / __ \/ __/  (_)  / __  / / __ `/ __ \/ //_/
+  / /_/ / __ \/ / __ \/ __/  (_)  / __  / / __ `/ __ \/ 
  / ____/ /_/ / / / / / /_   _    / /_/ / / /_/ / / / / ,<
 /_/    \____/_/_/ /_/\__/  (_)  /_____/_/\__,_/_/ /_/_/|_|
 
@@ -156,10 +158,12 @@ By: N3ZT POSSIBLE G3N && Point:projects
  / /|  /   _)/_ |  |  \_/__)__)_|_|_)|_|_  \_| _)| \| 
 /_/ |_/
 
+[ N 3 Z T G 3 N ] x [ P O I N T : p r o j e c t ] s
+
 Point:Blank Window Manager v0.1.0.0
     )" << std::endl;
     
-    // Initialize X server or connect to existing one
+    
     Display* display = nullptr;
     if (auto_start_x) {
         display = XServerManager::initializeDisplay(custom_display);
@@ -171,22 +175,22 @@ Point:Blank Window Manager v0.1.0.0
             std::cerr << "  3. Use 'startx' with ~/.xinitrc instead" << std::endl;
             return 1;
         }
-        XCloseDisplay(display); // WindowManager will open its own connection
+        XCloseDisplay(display); 
     }
     
-    // Initialize session environment (XDG variables, D-Bus, portals)
-    // This is critical for desktop integration and screen recorder compatibility
+    
+    
     if (!SessionManager::initializeSession()) {
         std::cerr << "Warning: Session initialization had issues, continuing anyway..." << std::endl;
-        // Non-fatal - continue without full session setup
+        
     }
     
     try {
-        // Create and initialize window manager
+        
         WindowManager wm;
         g_wm = &wm;
         
-        // Set custom config path if provided
+        
         if (custom_config_path.has_value()) {
             wm.setConfigPath(*custom_config_path);
         }
@@ -196,11 +200,14 @@ Point:Blank Window Manager v0.1.0.0
             XServerManager::shutdownXServer();
             return 1;
         }
+
+        cairo_debug_reset_static_data(); 
+        malloc_trim(0); 
         
         std::cout << "Window manager initialized successfully" << std::endl;
         std::cout << "Press SUPER+SHIFT+Q to exit" << std::endl;
+
         
-        // Run main event loop
         wm.run();
         
     } catch (const std::exception& e) {
@@ -209,7 +216,7 @@ Point:Blank Window Manager v0.1.0.0
         return 1;
     }
     
-    // Clean shutdown
+    
     XServerManager::shutdownXServer();
     
     return 0;

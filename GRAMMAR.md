@@ -135,7 +135,7 @@ let max_workspace = 12;
 let terminal = "alacritty";
 ```
 
-> **Implementation Status**: The `let` keyword is recognized by the lexer ([`ConfigParser.cpp:270`](/src/config/ConfigParser.cpp)) but variable declarations are not yet fully implemented in the parser. This feature is planned for future release.
+> **Implementation Status**: The `let` keyword is implemented in the parser ([`ConfigParser.cpp:721`](src/config/ConfigParser.cpp:721) - `Parser::letStatement()`). Variables are stored in `config_.variables` and can be referenced in expressions.
 
 ### Member Access (Property Chaining)
 ```wmi
@@ -239,7 +239,7 @@ Statement -> std::variant<
 >
 ```
 
-> **Note**: The `let` keyword is recognized by the lexer (`TokenType::Let`) but variable declarations are not yet fully implemented in the parser. The AST does not include a `VariableDeclaration` node type.
+> **Note**: The `let` keyword is implemented in the parser. Variables can be declared with `let name = value;` and used in expressions throughout the config.
 
 ### Type Checking
 Performed during interpretation:
@@ -287,3 +287,48 @@ if (window.class == "Firefox") {
     };
 };
 ```
+
+---
+
+## Bug Analysis
+
+### Known Parser Issues
+
+| Issue | Severity | Status |
+|-------|----------|--------|
+| Variable declarations (let) | ✅ Implemented | Parser::letStatement()
+| String escape sequences | Low | Limited support |
+| Array index access | Low | Not implemented |
+| Regular expressions | Low | Not implemented |
+
+### Error Handling
+
+The parser uses panic mode recovery:
+- On error, synchronizes to statement boundary
+- Collects all errors before reporting
+- Never crashes on invalid syntax
+- Falls back to defaults on failure
+
+---
+
+## Competitive Analysis
+
+### DSL Comparison
+
+| Feature | i3 | bspwm | dwm | Pointblank |
+|---------|----|----|------|------------|
+| Config syntax | Text | Shell scripts | C patches | DSL |
+| Type safety | None | None | None | ✅ std::variant |
+| Conditional rules | ❌ | ❌ | ❌ | ✅ |
+| Preprocessor | ❌ | ❌ | ❌ | ✅ |
+
+### Recommendations
+
+1. Add variable declarations (`let` keyword)
+2. Add string methods (contains, startsWith, etc.)
+3. Add array operations
+4. Add regex support in conditionals
+
+---
+
+## Grammar Validation

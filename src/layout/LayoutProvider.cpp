@@ -12,23 +12,15 @@
 
 namespace pblank {
 
-// ============================================================================
-// LayoutRect Implementation
-// ============================================================================
-
 LayoutRect LayoutRect::withGaps(int outer_gap, int inner_gap) const {
     LayoutRect result = *this;
     result.x += outer_gap;
     result.y += outer_gap;
     result.width -= 2 * outer_gap;
     result.height -= 2 * outer_gap;
-    (void)inner_gap; // Inner gap applied between windows, not on edges
+    (void)inner_gap; 
     return result;
 }
-
-// ============================================================================
-// BSPLayoutProvider Implementation
-// ============================================================================
 
 LayoutResult BSPLayoutProvider::calculate(const LayoutContext& context) {
     LayoutResult result;
@@ -37,14 +29,14 @@ LayoutResult BSPLayoutProvider::calculate(const LayoutContext& context) {
         return result;
     }
     
-    // Build tree if needed
+    
     if (!root_ || window_nodes_.size() != context.windows.size()) {
         root_ = std::make_shared<LayoutNode>();
         window_nodes_.clear();
         buildTree(context.windows, context.available_area, root_);
     }
     
-    // Collect placements from tree
+    
     std::function<void(std::shared_ptr<LayoutNode>)> collect;
     collect = [&](std::shared_ptr<LayoutNode> node) {
         if (!node) return;
@@ -72,7 +64,7 @@ void BSPLayoutProvider::buildTree(const std::vector<Window>& windows,
         return;
     }
     
-    // Split the area
+    
     size_t mid = windows.size() / 2;
     std::vector<Window> first_windows(windows.begin(), windows.begin() + mid);
     std::vector<Window> second_windows(windows.begin() + mid, windows.end());
@@ -103,7 +95,7 @@ void BSPLayoutProvider::buildTree(const std::vector<Window>& windows,
     node->second->parent = node;
     node->second->ratio = 0.5;
     
-    // Toggle split direction for children
+    
     split_horizontal_ = !split_horizontal_;
     buildTree(first_windows, first_rect, node->first);
     buildTree(second_windows, second_rect, node->second);
@@ -129,7 +121,7 @@ LayoutNode* BSPLayoutProvider::findNode(Window window) const {
 
 void BSPLayoutProvider::onWindowAdded(Window window, const LayoutContext& context) {
     (void)window; (void)context;
-    // Tree will be rebuilt on next calculate
+    
     root_.reset();
     window_nodes_.clear();
 }
@@ -149,7 +141,7 @@ void BSPLayoutProvider::rotate(bool clockwise) {
 
 void BSPLayoutProvider::flip(bool horizontal) {
     (void)horizontal;
-    // Flip would swap first/second children
+    
     root_.reset();
     window_nodes_.clear();
 }
@@ -213,7 +205,7 @@ bool BSPLayoutProvider::resizeWindow(Window window, int delta_x, int delta_y,
     LayoutNode* node = findNode(window);
     if (!node || !node->parent) return false;
     
-    // Adjust parent's split ratio
+    
     double delta = 0.0;
     if (node->parent->split == LayoutNode::SplitType::Horizontal) {
         delta = static_cast<double>(delta_x) / node->parent->rect.width;
@@ -244,10 +236,6 @@ std::unique_ptr<ILayoutProvider> BSPLayoutProvider::clone() const {
     return std::make_unique<BSPLayoutProvider>(*this);
 }
 
-// ============================================================================
-// HorizontalLayoutProvider Implementation
-// ============================================================================
-
 LayoutResult HorizontalLayoutProvider::calculate(const LayoutContext& context) {
     LayoutResult result;
     
@@ -264,14 +252,14 @@ LayoutResult HorizontalLayoutProvider::calculate(const LayoutContext& context) {
     for (size_t i = 0; i < count; ++i) {
         Window win = context.windows[i];
         
-        // Use stored ratio if available
+        
         int width = default_width;
         auto ratio_it = window_ratios_.find(win);
         if (ratio_it != window_ratios_.end()) {
             width = static_cast<int>(total_width * ratio_it->second);
         }
         
-        // Last window gets remaining space
+        
         if (i == count - 1) {
             width = context.available_area.x + total_width - x;
         }
@@ -359,10 +347,6 @@ std::unique_ptr<ILayoutProvider> HorizontalLayoutProvider::clone() const {
     return std::make_unique<HorizontalLayoutProvider>(*this);
 }
 
-// ============================================================================
-// VerticalLayoutProvider Implementation
-// ============================================================================
-
 LayoutResult VerticalLayoutProvider::calculate(const LayoutContext& context) {
     LayoutResult result;
     
@@ -379,14 +363,14 @@ LayoutResult VerticalLayoutProvider::calculate(const LayoutContext& context) {
     for (size_t i = 0; i < count; ++i) {
         Window win = context.windows[i];
         
-        // Use stored ratio if available
+        
         int height = default_height;
         auto ratio_it = window_ratios_.find(win);
         if (ratio_it != window_ratios_.end()) {
             height = static_cast<int>(total_height * ratio_it->second);
         }
         
-        // Last window gets remaining space
+        
         if (i == count - 1) {
             height = context.available_area.y + total_height - y;
         }
@@ -474,10 +458,6 @@ std::unique_ptr<ILayoutProvider> VerticalLayoutProvider::clone() const {
     return std::make_unique<VerticalLayoutProvider>(*this);
 }
 
-// ============================================================================
-// GridLayoutProvider Implementation
-// ============================================================================
-
 std::pair<int, int> GridLayoutProvider::getGridDimensions(size_t count) {
     if (count == 0) return {0, 0};
     if (count == 1) return {1, 1};
@@ -552,7 +532,7 @@ Window GridLayoutProvider::getPrevWindow(Window current,
 bool GridLayoutProvider::swapWindows(Window window1, Window window2,
                                      const LayoutContext& context) {
     (void)context; (void)window1; (void)window2;
-    // Grid layout doesn't support custom swap
+    
     return false;
 }
 
@@ -560,12 +540,8 @@ std::unique_ptr<ILayoutProvider> GridLayoutProvider::clone() const {
     return std::make_unique<GridLayoutProvider>(*this);
 }
 
-// ============================================================================
-// LayoutProviderFactory Implementation
-// ============================================================================
-
 LayoutProviderFactory::LayoutProviderFactory() {
-    // Register built-in layouts
+    
     registerLayout("bsp", []() {
         return std::make_unique<BSPLayoutProvider>();
     });
@@ -617,4 +593,4 @@ bool LayoutProviderFactory::hasLayout(const std::string& name) const {
     return creators_.find(name) != creators_.end();
 }
 
-} // namespace pblank
+} 

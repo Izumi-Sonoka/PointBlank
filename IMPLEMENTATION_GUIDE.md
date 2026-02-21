@@ -583,6 +583,58 @@ cp my_extension.so ~/.config/pblank/extensions/user/
 
 ---
 
+## Implementation Bug Analysis
+
+### Recent Fixes
+
+| Issue | Component | Fix |
+|-------|-----------|-----|
+| IPC partial writes | IPCServer | Loop until complete |
+| Client limit | IPCServer | MAX=32 |
+| Floating window leak | FloatingWindowManager | MAX=256 |
+| Thread safety | IPCServer | Thread-local buffer |
+
+### Performance Issues
+
+| Issue | Impact | Solution |
+|-------|--------|----------|
+| Lock contention | High | Lock-free queues |
+| Memory allocation | Medium | Pre-allocation |
+| X11 round trips | Medium | Batch operations |
+
+---
+
+## Implementation Competitive Analysis
+
+### C++20 Best Practices
+
+Pointblank uses modern C++ features that set it apart:
+
+| Feature | Usage | Benefit |
+|---------|-------|---------|
+| std::variant | AST nodes | Type safety |
+| std::unique_ptr | All resources | RAII |
+| constexpr | Hot paths | Compile-time eval |
+| string_view | Parsing | Zero-copy |
+
+### Architecture Comparison
+
+| Aspect | Traditional WM | Pointblank |
+|--------|----------------|------------|
+| Memory | Raw new/delete | Smart pointers |
+| Errors | Exit on crash | Toaster + fallback |
+| Config | Text files | DSL with AST |
+| Extensions | Patches | ABI-stable plugins |
+
+### Recommendations
+
+1. Add unit tests for core components
+2. Benchmark layout calculation
+3. Profile IPC latency
+4. Add sanitizers (ASAN, TSAN) to CI
+
+---
+
 ## Troubleshooting
 
 ### Extension Won't Load

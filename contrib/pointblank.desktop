@@ -1,7 +1,7 @@
 [Desktop Entry]
 Name=Pointblank
-Comment=Pointblank Tiling Window Manager
-Exec=pointblank
+Comment=X11 Infinite Tiling Window Manager
+Exec=dbus-run-session /usr/bin/pointblank
 Type=Application
 DesktopNames=Pointblank
 Categories=WindowManager;

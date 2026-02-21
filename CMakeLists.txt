@@ -30,14 +30,14 @@ endif()
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -march=native -mtune=native")
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -flto -ffat-lto-objects")
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -fomit-frame-pointer")
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -fno-exceptions")
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -fno-rtti")
+# Note: Exceptions and RTTI are required by the codebase (try/catch blocks, std::variant)
 
 # Link-time optimization for release
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
     set(CMAKE_AR "gcc-ar")
     set(CMAKE_NM "gcc-nm")
     set(CMAKE_RANLIB "gcc-ranlib")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s -Wl,--gc-sections -Wl,--as-needed -Wl,-z,relro,-z,now -Wl,--exclude-libs=ALL")
 endif()
 
 # Debug flags with sanitizers
@@ -80,6 +80,7 @@ set(CORE_SOURCES
 set(CONFIG_SOURCES
     src/config/ConfigParser.cpp
     src/config/LayoutConfigParser.cpp
+    src/config/StartupApps.cpp
     src/config/ConfigWatcher.cpp
 )
 
@@ -88,7 +89,14 @@ set(WINDOW_SOURCES
     src/window/FloatingWindowManager.cpp
     src/window/KeybindManager.cpp
     src/window/PreselectionWindow.cpp
+    src/window/ScratchpadManager.cpp
     src/window/SizeConstraints.cpp
+    src/window/WindowSwallower.cpp
+)
+
+# IPC
+set(IPC_SOURCES
+    src/ipc/IPCServer.cpp
 )
 
 # Display and EWMH
@@ -121,6 +129,7 @@ set(ALL_SOURCES
     ${CORE_SOURCES}
     ${CONFIG_SOURCES}
     ${WINDOW_SOURCES}
+    ${IPC_SOURCES}
     ${DISPLAY_SOURCES}
     ${PERFORMANCE_SOURCES}
     ${LAYOUT_SOURCES}

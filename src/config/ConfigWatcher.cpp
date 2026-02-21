@@ -12,7 +12,7 @@
 
 namespace pblank {
 
-// Buffer size for inotify reads
+
 constexpr size_t INOTIFY_BUFFER_SIZE = 4096;
 
 ConfigWatcher::ConfigWatcher() = default;
@@ -45,7 +45,7 @@ int ConfigWatcher::addInotifyWatch(const std::filesystem::path& path, bool recur
         return -1;
     }
     
-    // Watch for modify, close write, move, and delete events
+    
     uint32_t mask = IN_MODIFY | IN_CLOSE_WRITE | IN_MOVED_TO | 
                     IN_CREATE | IN_DELETE | IN_DELETE_SELF;
     
@@ -58,7 +58,7 @@ int ConfigWatcher::addInotifyWatch(const std::filesystem::path& path, bool recur
     
     watch_descriptors_[wd] = path;
     
-    // If directory and recursive, add watches for subdirectories
+    
     if (recursive && std::filesystem::is_directory(path)) {
         try {
             for (const auto& entry : std::filesystem::recursive_directory_iterator(path)) {
@@ -128,7 +128,7 @@ void ConfigWatcher::setDebounceInterval(std::chrono::milliseconds ms) {
 
 bool ConfigWatcher::start() {
     if (running_.load()) {
-        return true;  // Already running
+        return true;  
     }
     
     if (inotify_fd_ == -1 && !setupInotify()) {
@@ -144,7 +144,7 @@ bool ConfigWatcher::start() {
 
 void ConfigWatcher::stop() {
     if (!running_.exchange(false)) {
-        return;  // Already stopped
+        return;  
     }
     
     if (watcher_thread_.joinable()) {
@@ -155,7 +155,7 @@ void ConfigWatcher::stop() {
 }
 
 void ConfigWatcher::watcherLoop() {
-    // Use poll to wait for inotify events with timeout
+    
     struct pollfd pfd;
     pfd.fd = inotify_fd_;
     pfd.events = POLLIN;
@@ -163,36 +163,36 @@ void ConfigWatcher::watcherLoop() {
     char buffer[INOTIFY_BUFFER_SIZE];
     
     while (running_.load()) {
-        // Poll with 100ms timeout to allow checking running_ flag
+        
         int ret = poll(&pfd, 1, 100);
         
         if (ret == -1) {
             if (errno == EINTR) {
-                continue;  // Interrupted, check running_ and retry
+                continue;  
             }
             std::cerr << "ConfigWatcher: Poll error: " << strerror(errno) << std::endl;
             break;
         }
         
         if (ret == 0) {
-            // Timeout - process any pending debounced changes
+            
             processDebouncedChanges();
             continue;
         }
         
         if (pfd.revents & POLLIN) {
-            // Read inotify events
+            
             ssize_t len = read(inotify_fd_, buffer, sizeof(buffer));
             
             if (len == -1) {
                 if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                    continue;  // No data available
+                    continue;  
                 }
                 std::cerr << "ConfigWatcher: Read error: " << strerror(errno) << std::endl;
                 break;
             }
             
-            // Process all events in buffer
+            
             ssize_t i = 0;
             while (i < len) {
                 const struct inotify_event* event = 
@@ -203,7 +203,7 @@ void ConfigWatcher::watcherLoop() {
                 i += sizeof(struct inotify_event) + event->len;
             }
             
-            // If debounce is 0, process changes immediately after events
+            
             if (debounce_interval_.count() == 0) {
                 processDebouncedChanges();
             }
@@ -212,7 +212,7 @@ void ConfigWatcher::watcherLoop() {
 }
 
 void ConfigWatcher::processEvent(const struct inotify_event* event) {
-    // Find the path for this watch descriptor
+    
     auto it = watch_descriptors_.find(event->wd);
     if (it == watch_descriptors_.end()) {
         return;
@@ -225,7 +225,7 @@ void ConfigWatcher::processEvent(const struct inotify_event* event) {
         full_path /= event->name;
     }
     
-    // Determine event type
+    
     ConfigChangeEvent::Type change_type = ConfigChangeEvent::Type::Modified;
     
     if (event->mask & (IN_MODIFY | IN_CLOSE_WRITE)) {
@@ -238,13 +238,13 @@ void ConfigWatcher::processEvent(const struct inotify_event* event) {
         change_type = ConfigChangeEvent::Type::Created;
     }
     
-    // Only process .wmi files
+    
     if (std::filesystem::is_regular_file(full_path) && 
         full_path.extension() == ".wmi") {
         handleFileChange(full_path, change_type);
     }
     
-    // If new directory created in watched directory, add watch
+    
     if ((event->mask & IN_CREATE) && (event->mask & IN_ISDIR)) {
         addInotifyWatch(full_path, true);
     }
@@ -265,7 +265,7 @@ void ConfigWatcher::handleFileChange(const std::filesystem::path& path,
 }
 
 void ConfigWatcher::debounceAndProcess(const std::filesystem::path& path) {
-    // Record the change time
+    
     {
         std::lock_guard<std::mutex> lock(pending_mutex_);
         pending_changes_[path] = std::chrono::system_clock::now();
@@ -281,9 +281,9 @@ void ConfigWatcher::processDebouncedChanges() {
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
             now - it->second);
         
-        // If debounce is 0, process immediately
+        
         if (debounce_interval_.count() == 0 || elapsed >= debounce_interval_) {
-            // Process this change
+            
             ValidationResult result = reload(it->first);
             
             if (result) {
@@ -304,7 +304,7 @@ void ConfigWatcher::processDebouncedChanges() {
 ValidationResult ConfigWatcher::reload(const std::filesystem::path& path) {
     std::cout << "ConfigWatcher: Reloading configuration from " << path << std::endl;
     
-    // Validate the configuration
+    
     ValidationResult result = validateConfig(path);
     
     if (!result) {
@@ -313,11 +313,11 @@ ValidationResult ConfigWatcher::reload(const std::filesystem::path& path) {
         return result;
     }
     
-    // Apply the configuration
+    
     if (applyConfig(path)) {
         last_good_config_ = path;
         
-        // Notify success
+        
         {
             std::lock_guard<std::mutex> lock(callback_mutex_);
             if (notify_callback_) {
@@ -343,7 +343,7 @@ ValidationResult ConfigWatcher::reload(const std::filesystem::path& path) {
 ValidationResult ConfigWatcher::validateConfig(const std::filesystem::path& path) {
     ValidationResult result;
     
-    // Check file exists and is readable
+    
     if (!std::filesystem::exists(path)) {
         result.success = false;
         result.errors.push_back("Configuration file does not exist: " + path.string());
@@ -357,12 +357,12 @@ ValidationResult ConfigWatcher::validateConfig(const std::filesystem::path& path
         return result;
     }
     
-    // Read file content for validation
+    
     std::string content((std::istreambuf_iterator<char>(file)),
                         std::istreambuf_iterator<char>());
     file.close();
     
-    // Basic syntax validation
+    
     int brace_count = 0;
     int bracket_count = 0;
     int paren_count = 0;
@@ -374,26 +374,26 @@ ValidationResult ConfigWatcher::validateConfig(const std::filesystem::path& path
     for (size_t i = 0; i < content.size(); ++i) {
         char c = content[i];
         
-        // Track line numbers
+        
         if (c == '\n') {
             line_num++;
             in_comment = false;
             continue;
         }
         
-        // Skip comment content
+        
         if (in_comment) {
             prev_char = c;
             continue;
         }
         
-        // Check for comment start
+        
         if (c == '/' && prev_char == '/') {
             in_comment = true;
             continue;
         }
         
-        // Handle string literals
+        
         if (c == '"' && prev_char != '\\') {
             in_string = !in_string;
         }
@@ -434,7 +434,7 @@ ValidationResult ConfigWatcher::validateConfig(const std::filesystem::path& path
         prev_char = c;
     }
     
-    // Check for unclosed delimiters
+    
     if (brace_count != 0) {
         ValidationResult::ErrorLocation loc;
         loc.line = line_num;
@@ -456,13 +456,13 @@ ValidationResult ConfigWatcher::validateConfig(const std::filesystem::path& path
         result.error_locations.push_back(loc);
     }
     
-    // Call custom validation callback if set
+    
     {
         std::lock_guard<std::mutex> lock(callback_mutex_);
         if (validation_callback_) {
             ValidationResult custom_result = validation_callback_(path);
             if (!custom_result) {
-                // Merge errors
+                
                 result.success = false;
                 for (const auto& err : custom_result.errors) {
                     result.errors.push_back(err);
@@ -477,13 +477,13 @@ ValidationResult ConfigWatcher::validateConfig(const std::filesystem::path& path
         }
     }
     
-    // If no errors found, mark as success
+    
     if (result.error_locations.empty() && result.errors.empty()) {
         result.success = true;
     } else {
         result.success = false;
         
-        // Build error list from locations
+        
         for (const auto& loc : result.error_locations) {
             std::ostringstream oss;
             oss << "Line " << loc.line << ": " << loc.message;
@@ -521,14 +521,14 @@ void ConfigWatcher::reportErrors(const ValidationResult& result) {
         std::cerr << "  WARNING: " << warning << std::endl;
     }
     
-    // Call error callback
+    
     {
         std::lock_guard<std::mutex> lock(callback_mutex_);
         if (error_callback_) {
             error_callback_(result);
         }
         
-        // Also notify user
+        
         if (notify_callback_) {
             std::string msg = "Configuration validation failed with " + 
                              std::to_string(result.errors.size()) + " error(s)";
@@ -539,7 +539,7 @@ void ConfigWatcher::reportErrors(const ValidationResult& result) {
 
 void ConfigWatcher::writeErrorLog(const ValidationResult& result, 
                                    const std::filesystem::path& config_path) {
-    // Create error log directory if it doesn't exist
+    
     std::filesystem::path error_dir(ERROR_LOG_DIR);
     std::error_code ec;
     
@@ -551,7 +551,7 @@ void ConfigWatcher::writeErrorLog(const ValidationResult& result,
         }
     }
     
-    // Generate timestamp for filename
+    
     auto now = std::chrono::system_clock::now();
     auto now_time_t = std::chrono::system_clock::to_time_t(now);
     auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -563,7 +563,7 @@ void ConfigWatcher::writeErrorLog(const ValidationResult& result,
               << "_" << std::setfill('0') << std::setw(3) << now_ms.count()
               << ".log";
     
-    // Write error log
+    
     std::ofstream log_file(filename.str());
     if (!log_file.is_open()) {
         std::cerr << "ConfigWatcher: Failed to create error log file: " 
@@ -571,21 +571,21 @@ void ConfigWatcher::writeErrorLog(const ValidationResult& result,
         return;
     }
     
-    // Header
+    
     log_file << "=== Pointblank Configuration Error Log ===" << std::endl;
     log_file << "Timestamp: " << std::put_time(std::localtime(&now_time_t), "%Y-%m-%d %H:%M:%S")
              << "." << std::setfill('0') << std::setw(3) << now_ms.count() << std::endl;
     log_file << "Config file: " << config_path.string() << std::endl;
     log_file << std::endl;
     
-    // Errors
+    
     log_file << "--- ERRORS (" << result.errors.size() << ") ---" << std::endl;
     for (const auto& error : result.errors) {
         log_file << "  " << error << std::endl;
     }
     log_file << std::endl;
     
-    // Error locations
+    
     if (!result.error_locations.empty()) {
         log_file << "--- ERROR LOCATIONS ---" << std::endl;
         for (const auto& loc : result.error_locations) {
@@ -601,7 +601,7 @@ void ConfigWatcher::writeErrorLog(const ValidationResult& result,
         log_file << std::endl;
     }
     
-    // Warnings
+    
     if (!result.warnings.empty()) {
         log_file << "--- WARNINGS (" << result.warnings.size() << ") ---" << std::endl;
         for (const auto& warning : result.warnings) {
@@ -615,4 +615,4 @@ void ConfigWatcher::writeErrorLog(const ValidationResult& result,
     std::cout << "ConfigWatcher: Error log written to " << filename.str() << std::endl;
 }
 
-} // namespace pblank
+} 

@@ -21,14 +21,14 @@ SyncManager& SyncManager::instance() {
 SyncManager::~SyncManager() {
     std::lock_guard<std::mutex> lock(mutex_);
     
-    // Destroy all alarms
+    
     for (auto& pair : alarm_windows_) {
         if (pair.first && sync_available_) {
             XSyncDestroyAlarm(display_, pair.first);
         }
     }
     
-    // Destroy WM counter
+    
     if (wm_counter_ && sync_available_) {
         XSyncDestroyCounter(display_, wm_counter_);
     }
@@ -38,12 +38,12 @@ bool SyncManager::initialize(Display* display) {
     std::lock_guard<std::mutex> lock(mutex_);
     
     if (sync_available_) {
-        return true;  // Already initialized
+        return true;  
     }
     
     display_ = display;
     
-    // Check for XSync extension
+    
     int major_version = 0, minor_version = 0;
     if (!XSyncQueryExtension(display, &sync_event_base_, &sync_error_base_)) {
         return false;
@@ -55,7 +55,7 @@ bool SyncManager::initialize(Display* display) {
     
     sync_available_ = true;
     
-    // Create WM's own counter for compositing sync
+    
     wm_counter_ = createCounter();
     
     return true;
@@ -88,7 +88,7 @@ void SyncManager::registerWindow(Window window, XSyncCounter counter) {
     sc.active = true;
     sc.last_update = getCurrentTimeMs();
     
-    // Create an alarm to monitor counter changes
+    
     XSyncValue threshold;
     XSyncIntToValue(&threshold, 0);
     sc.alarm = createAlarm(counter, threshold, XSyncPositiveComparison);
@@ -110,7 +110,7 @@ void SyncManager::unregisterWindow(Window window) {
         window_counters_.erase(it);
     }
     
-    // Also clean up any pending resize state
+    
     resize_states_.erase(window);
 }
 
@@ -134,7 +134,7 @@ bool SyncManager::beginResizeSync(Window window, int64_t serial) {
     state.waiting_for_update = true;
     state.start_time = getCurrentTimeMs();
     
-    // Set target value to current + 1 (client will increment when ready)
+    
     XSyncValue target;
     XSyncIntToValue(&target, syncValueToInt(state.initial_value) + 1);
     state.target_value = target;
@@ -154,7 +154,7 @@ void SyncManager::handleAlarmEvent(XSyncAlarmNotifyEvent* event) {
         return;
     }
     
-    // Find the window for this alarm
+    
     auto alarm_it = alarm_windows_.find(event->alarm);
     if (alarm_it == alarm_windows_.end()) {
         return;
@@ -162,21 +162,21 @@ void SyncManager::handleAlarmEvent(XSyncAlarmNotifyEvent* event) {
     
     Window window = alarm_it->second;
     
-    // Update counter value
+    
     auto counter_it = window_counters_.find(window);
     if (counter_it != window_counters_.end()) {
         counter_it->second.value = event->counter_value;
         counter_it->second.last_update = getCurrentTimeMs();
     }
     
-    // Check if this completes a resize sync
+    
     auto resize_it = resize_states_.find(window);
     if (resize_it != resize_states_.end() && resize_it->second.waiting_for_update) {
         int64_t current = syncValueToInt(event->counter_value);
         int64_t target = syncValueToInt(resize_it->second.target_value);
         
         if (current >= target) {
-            // Resize sync completed
+            
             resize_it->second.waiting_for_update = false;
             
             if (resize_complete_callback_) {
@@ -186,8 +186,8 @@ void SyncManager::handleAlarmEvent(XSyncAlarmNotifyEvent* event) {
         }
     }
     
-    // Recreate alarm for next event
-    // XSync alarms are automatically destroyed when triggered
+    
+    
     if (counter_it != window_counters_.end()) {
         XSyncValue next_threshold;
         XSyncIntToValue(&next_threshold, syncValueToInt(event->counter_value) + 1);
@@ -207,13 +207,13 @@ void SyncManager::handleAlarmEvent(XSyncAlarmNotifyEvent* event) {
 void SyncManager::handleCounterEvent(XSyncCounter counter, XSyncValue value) {
     std::lock_guard<std::mutex> lock(mutex_);
     
-    // Find window with this counter
+    
     for (auto& pair : window_counters_) {
         if (pair.second.counter == counter) {
             pair.second.value = value;
             pair.second.last_update = getCurrentTimeMs();
             
-            // Check resize sync completion
+            
             auto resize_it = resize_states_.find(pair.first);
             if (resize_it != resize_states_.end() && resize_it->second.waiting_for_update) {
                 int64_t current = syncValueToInt(value);
@@ -244,7 +244,7 @@ void SyncManager::updateResizeTarget(Window window, int64_t serial) {
     if (it != resize_states_.end()) {
         it->second.serial = serial;
         
-        // Update target value
+        
         auto counter_it = window_counters_.find(window);
         if (counter_it != window_counters_.end()) {
             int64_t current = syncValueToInt(counter_it->second.value);
@@ -284,7 +284,7 @@ void SyncManager::processTimeouts(uint32_t timeout_ms) {
         }
     }
     
-    // Complete timed-out syncs
+    
     for (Window window : timed_out) {
         auto it = resize_states_.find(window);
         if (it != resize_states_.end()) {
@@ -373,4 +373,4 @@ int64_t SyncManager::syncValueToInt(XSyncValue value) {
            (static_cast<int64_t>(XSyncValueHigh32(value)) << 32);
 }
 
-} // namespace pblank
+} 

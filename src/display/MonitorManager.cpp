@@ -18,7 +18,7 @@ bool MonitorManager::initialize(Display* display) {
     display_ = display;
     root_window_ = DefaultRootWindow(display_);
     
-    // Check for XRandR extension
+    
     int event_base, error_base;
     if (!XRRQueryExtension(display_, &event_base, &error_base)) {
         std::cerr << "MonitorManager: XRandR extension not available" << std::endl;
@@ -29,7 +29,7 @@ bool MonitorManager::initialize(Display* display) {
     xrandr_event_base_ = event_base;
     xrandr_error_base_ = error_base;
     
-    // Query XRandR version
+    
     int major, minor;
     if (!XRRQueryVersion(display_, &major, &minor)) {
         std::cerr << "MonitorManager: Failed to query XRandR version" << std::endl;
@@ -42,7 +42,7 @@ bool MonitorManager::initialize(Display* display) {
     
     std::cout << "MonitorManager: XRandR " << major << "." << minor << " available" << std::endl;
     
-    // Initial monitor query
+    
     queryMonitors();
     initializeCameras();
     selectEvents();
@@ -90,7 +90,7 @@ void MonitorManager::queryMonitors() {
             }
         }
         
-        // Calculate scale for HiDPI
+        
         double dpi = monitor.getDPI();
         if (dpi > 120.0) {
             monitor.scale = dpi / 96.0;
@@ -108,7 +108,7 @@ void MonitorManager::queryMonitors() {
     
     XRRFreeScreenResources(resources);
     
-    // If no monitors found, create a default one
+    
     if (monitors_.empty()) {
         std::cerr << "MonitorManager: No monitors found, using default" << std::endl;
         
@@ -141,14 +141,14 @@ void MonitorManager::refresh() {
     
     std::cout << "MonitorManager: Refreshing monitor configuration" << std::endl;
     
-    // Store old monitor count
+    
     size_t old_count = monitors_.size();
     
-    // Re-query monitors
+    
     queryMonitors();
     initializeCameras();
     
-    // Notify of changes
+    
     if (monitors_.size() != old_count) {
         notifyChange(MonitorEventType::Configuration, -1, nullptr);
     }
@@ -159,7 +159,7 @@ const MonitorInfo* MonitorManager::getPrimaryMonitor() const {
         if (monitor.primary) return &monitor;
     }
     
-    // Return first monitor if no primary
+    
     return monitors_.empty() ? nullptr : &monitors_[0];
 }
 
@@ -203,7 +203,7 @@ std::pair<unsigned int, unsigned int> MonitorManager::getTotalDimensions() const
 void MonitorManager::selectEvents() {
     if (!display_ || !xrandr_available_ || root_window_ == None) return;
     
-    // Select for screen change notifications
+    
     XRRSelectInput(display_, root_window_, 
                    RRScreenChangeNotifyMask | 
                    RRCrtcChangeNotifyMask | 
@@ -220,13 +220,13 @@ bool MonitorManager::handleEvent(XEvent& event) {
     
     std::cout << "MonitorManager: Received XRandR screen change event" << std::endl;
     
-    // Process the screen change
+    
     XRRScreenChangeNotifyEvent* scn_event = 
         reinterpret_cast<XRRScreenChangeNotifyEvent*>(&event);
     
-    (void)scn_event;  // Unused for now
+    (void)scn_event;  
     
-    // Refresh configuration
+    
     refresh();
     
     return true;
@@ -257,17 +257,17 @@ void MonitorManager::syncCameras(int64_t virtual_x, int64_t virtual_y) {
 const MonitorInfo* MonitorManager::getMonitorForWindow(Window window) const {
     if (!display_) return nullptr;
     
-    // Get window geometry
+    
     XWindowAttributes attrs;
     if (!XGetWindowAttributes(display_, window, &attrs)) {
         return getPrimaryMonitor();
     }
     
-    // Get window center
+    
     int center_x = attrs.x + attrs.width / 2;
     int center_y = attrs.y + attrs.height / 2;
     
-    // Translate to root coordinates
+    
     Window child;
     XTranslateCoordinates(display_, window, root_window_,
                          center_x, center_y,
@@ -286,4 +286,4 @@ void MonitorManager::notifyChange(MonitorEventType type, int monitor_id, Monitor
     }
 }
 
-} // namespace pblank
+} 

@@ -11,9 +11,9 @@
 
 namespace pblank {
 
-// ============================================================================
-// LayoutLexer Implementation
-// ============================================================================
+
+
+
 
 LayoutLexer::LayoutLexer(std::string source)
     : source_(std::move(source)) {}
@@ -28,7 +28,7 @@ std::vector<LayoutToken> LayoutLexer::tokenize() {
         
         char c = peek();
         
-        // Skip comments
+        
         if (c == '/' && peekNext() == '/') {
             skipComment();
             continue;
@@ -39,25 +39,25 @@ std::vector<LayoutToken> LayoutLexer::tokenize() {
             continue;
         }
         
-        // String literals
+        
         if (c == '"') {
             tokens.push_back(stringLiteral());
             continue;
         }
         
-        // Numbers
+        
         if (std::isdigit(c) || (c == '-' && std::isdigit(peekNext()))) {
             tokens.push_back(number());
             continue;
         }
         
-        // Identifiers and keywords
+        
         if (std::isalpha(c) || c == '_') {
             tokens.push_back(identifier());
             continue;
         }
         
-        // Operators and delimiters
+        
         switch (c) {
             case '+': tokens.push_back(makeToken(LayoutTokenType::Plus)); advance(); break;
             case '-': 
@@ -195,7 +195,7 @@ LayoutToken LayoutLexer::number() {
     int start_col = column_;
     std::string num_str;
     
-    // Handle negative sign
+    
     if (peek() == '-') {
         num_str += advance();
     }
@@ -204,9 +204,9 @@ LayoutToken LayoutLexer::number() {
         num_str += advance();
     }
     
-    // Check for decimal
+    
     if (peek() == '.' && std::isdigit(peekNext())) {
-        num_str += advance(); // consume '.'
+        num_str += advance(); 
         while (!isAtEnd() && std::isdigit(peek())) {
             num_str += advance();
         }
@@ -221,7 +221,7 @@ LayoutToken LayoutLexer::number() {
 LayoutToken LayoutLexer::stringLiteral() {
     int start_line = line_;
     int start_col = column_;
-    advance(); // consume opening quote
+    advance(); 
     
     std::string value;
     while (!isAtEnd() && peek() != '"') {
@@ -250,7 +250,7 @@ LayoutToken LayoutLexer::stringLiteral() {
     if (isAtEnd()) {
         addError("Unterminated string");
     } else {
-        advance(); // consume closing quote
+        advance(); 
     }
     
     return LayoutToken(LayoutTokenType::String, value, start_line, start_col, value);
@@ -264,7 +264,7 @@ LayoutToken LayoutLexer::identifier() {
         ident += advance();
     }
     
-    // Check for keywords
+    
     static const std::unordered_map<std::string, LayoutTokenType> keywords = {
         {"let", LayoutTokenType::Let},
         {"layout", LayoutTokenType::Layout},
@@ -292,16 +292,16 @@ LayoutToken LayoutLexer::identifier() {
 LayoutToken LayoutLexer::preprocessor() {
     int start_line = line_;
     int start_col = column_;
-    advance(); // consume '#'
+    advance(); 
     
     std::string directive;
     while (!isAtEnd() && (std::isalpha(peek()) || peek() == '_' || peek() == '.')) {
         directive += advance();
     }
     
-    // Check for specific preprocessor directives
+    
     if (directive == "include") {
-        // Check for "layout" keyword
+        
         skipWhitespace();
         std::string next_word;
         while (!isAtEnd() && (std::isalpha(peek()) || peek() == '_')) {
@@ -316,7 +316,7 @@ LayoutToken LayoutLexer::preprocessor() {
     }
     
     if (directive == "included.layout") {
-        // Check for "user" keyword
+        
         skipWhitespace();
         std::string next_word;
         while (!isAtEnd() && (std::isalpha(peek()) || peek() == '_')) {
@@ -338,9 +338,9 @@ void LayoutLexer::addError(const std::string& message) {
                      std::to_string(column_) + ": " + message);
 }
 
-// ============================================================================
-// LayoutParser Implementation
-// ============================================================================
+
+
+
 
 LayoutParser::LayoutParser(std::vector<LayoutToken> tokens)
     : tokens_(std::move(tokens)) {}
@@ -390,10 +390,10 @@ const LayoutToken& LayoutParser::consume(LayoutTokenType type, const std::string
 std::unique_ptr<layout_ast::LayoutConfigFile> LayoutParser::configFile() {
     auto config = std::make_unique<layout_ast::LayoutConfigFile>();
     
-    // Parse includes
+    
     config->includes = includes();
     
-    // Parse root block
+    
     if (!isAtEnd()) {
         config->root = block();
     }
@@ -408,11 +408,11 @@ std::vector<layout_ast::LayoutIncludeDirective> LayoutParser::includes() {
         layout_ast::LayoutIncludeDirective directive;
         directive.is_user_layout = (previous().type == LayoutTokenType::IncludeLayoutUser);
         
-        // Expect layout name (string or identifier)
+        
         if (match({LayoutTokenType::String})) {
             directive.layout_name = std::get<std::string>(previous().literal_value);
         } else if (match({LayoutTokenType::Identifier})) {
-            directive.layout_name = previous().lexeme;
+            directive.layout_name = std::string{previous().lexeme};
         } else {
             addError("Expected layout name after include directive");
             continue;
@@ -427,18 +427,18 @@ std::vector<layout_ast::LayoutIncludeDirective> LayoutParser::includes() {
 std::unique_ptr<layout_ast::LayoutBlock> LayoutParser::block() {
     auto blk = std::make_unique<layout_ast::LayoutBlock>();
     
-    // Optional block name
+    
     if (match({LayoutTokenType::Identifier})) {
-        blk->name = previous().lexeme;
+        blk->name = std::string{previous().lexeme};
     }
     
-    // Expect opening brace
+    
     if (!match({LayoutTokenType::LeftBrace})) {
         addError("Expected '{' to start block");
         return blk;
     }
     
-    // Parse statements
+    
     while (!check(LayoutTokenType::RightBrace) && !isAtEnd()) {
         auto stmt = statement();
         if (stmt) {
@@ -446,7 +446,7 @@ std::unique_ptr<layout_ast::LayoutBlock> LayoutParser::block() {
         }
     }
     
-    // Expect closing brace
+    
     if (!match({LayoutTokenType::RightBrace})) {
         addError("Expected '}' to close block");
     }
@@ -455,17 +455,17 @@ std::unique_ptr<layout_ast::LayoutBlock> LayoutParser::block() {
 }
 
 std::unique_ptr<layout_ast::LayoutStatement> LayoutParser::statement() {
-    // Layout rule: layout "workspace_pattern" -> mode { params }
+    
     if (match({LayoutTokenType::Layout})) {
         return layoutRule();
     }
     
-    // Assignment: let name = value;
+    
     if (match({LayoutTokenType::Let})) {
         return assignment();
     }
     
-    // Named block
+    
     if (check(LayoutTokenType::Identifier)) {
         auto next = tokens_[current_ + 1];
         if (next.type == LayoutTokenType::LeftBrace) {
@@ -483,11 +483,11 @@ std::unique_ptr<layout_ast::LayoutStatement> LayoutParser::statement() {
 std::unique_ptr<layout_ast::LayoutStatement> LayoutParser::layoutRule() {
     layout_ast::LayoutRule rule;
     
-    // Get workspace pattern
+    
     if (match({LayoutTokenType::String})) {
         rule.workspace_pattern = std::get<std::string>(previous().literal_value);
     } else if (match({LayoutTokenType::Identifier})) {
-        rule.workspace_pattern = previous().lexeme;
+        rule.workspace_pattern = std::string{previous().lexeme};
     } else if (match({LayoutTokenType::Integer})) {
         rule.workspace_pattern = std::to_string(std::get<int>(previous().literal_value));
     } else {
@@ -495,30 +495,30 @@ std::unique_ptr<layout_ast::LayoutStatement> LayoutParser::layoutRule() {
         return nullptr;
     }
     
-    // Expect arrow
+    
     if (!match({LayoutTokenType::Arrow})) {
         addError("Expected '->' after workspace pattern");
         return nullptr;
     }
     
-    // Get layout mode
+    
     if (!match({LayoutTokenType::Identifier})) {
         addError("Expected layout mode name");
         return nullptr;
     }
     
-    auto mode_opt = layoutModeFromString(previous().lexeme);
+    auto mode_opt = layoutModeFromString(std::string{previous().lexeme});
     if (!mode_opt) {
-        addError("Unknown layout mode: " + previous().lexeme);
+        addError("Unknown layout mode: " + std::string{previous().lexeme});
         return nullptr;
     }
     rule.mode = *mode_opt;
     
-    // Optional parameter block
+    
     if (match({LayoutTokenType::LeftBrace})) {
         while (!check(LayoutTokenType::RightBrace) && !isAtEnd()) {
             if (match({LayoutTokenType::Identifier})) {
-                std::string param_name = previous().lexeme;
+                std::string param_name = std::string{previous().lexeme};
                 
                 if (!match({LayoutTokenType::Assign})) {
                     addError("Expected '=' after parameter name");
@@ -527,7 +527,7 @@ std::unique_ptr<layout_ast::LayoutStatement> LayoutParser::layoutRule() {
                 
                 auto value_expr = expression();
                 if (value_expr) {
-                    // Evaluate simple expressions
+                    
                     try {
                         auto val = std::make_unique<layout_ast::LayoutExpression>(
                             layout_ast::LayoutExpressionValue{
@@ -572,20 +572,20 @@ std::unique_ptr<layout_ast::LayoutStatement> LayoutParser::layoutRule() {
 std::unique_ptr<layout_ast::LayoutStatement> LayoutParser::assignment() {
     layout_ast::LayoutAssignment assignment;
     
-    // Get variable name
+    
     if (!match({LayoutTokenType::Identifier})) {
         addError("Expected variable name after 'let'");
         return nullptr;
     }
-    assignment.name = previous().lexeme;
+    assignment.name = std::string{previous().lexeme};
     
-    // Expect '='
+    
     if (!match({LayoutTokenType::Assign})) {
         addError("Expected '=' after variable name");
         return nullptr;
     }
     
-    // Parse value expression
+    
     assignment.value = expression();
     
     match({LayoutTokenType::Semicolon});
@@ -725,7 +725,7 @@ std::unique_ptr<layout_ast::LayoutExpression> LayoutParser::unary() {
 }
 
 std::unique_ptr<layout_ast::LayoutExpression> LayoutParser::primary() {
-    // Integer literal
+    
     if (match({LayoutTokenType::Integer})) {
         return std::make_unique<layout_ast::LayoutExpression>(
             layout_ast::LayoutExpressionValue{
@@ -734,7 +734,7 @@ std::unique_ptr<layout_ast::LayoutExpression> LayoutParser::primary() {
         );
     }
     
-    // Float literal
+    
     if (match({LayoutTokenType::Float})) {
         return std::make_unique<layout_ast::LayoutExpression>(
             layout_ast::LayoutExpressionValue{
@@ -743,7 +743,7 @@ std::unique_ptr<layout_ast::LayoutExpression> LayoutParser::primary() {
         );
     }
     
-    // String literal
+    
     if (match({LayoutTokenType::String})) {
         return std::make_unique<layout_ast::LayoutExpression>(
             layout_ast::LayoutExpressionValue{
@@ -752,7 +752,7 @@ std::unique_ptr<layout_ast::LayoutExpression> LayoutParser::primary() {
         );
     }
     
-    // Boolean literals
+    
     if (match({LayoutTokenType::TokTrue})) {
         return std::make_unique<layout_ast::LayoutExpression>(
             layout_ast::LayoutExpressionValue{layout_ast::BoolLiteral{true}}
@@ -765,16 +765,16 @@ std::unique_ptr<layout_ast::LayoutExpression> LayoutParser::primary() {
         );
     }
     
-    // Identifier
+    
     if (match({LayoutTokenType::Identifier})) {
         return std::make_unique<layout_ast::LayoutExpression>(
             layout_ast::LayoutExpressionValue{
-                layout_ast::Identifier{previous().lexeme}
+                layout_ast::Identifier{std::string{previous().lexeme}}
             }
         );
     }
     
-    // Parenthesized expression
+    
     if (match({LayoutTokenType::LeftParen})) {
         auto expr = expression();
         if (!match({LayoutTokenType::RightParen})) {
@@ -783,7 +783,7 @@ std::unique_ptr<layout_ast::LayoutExpression> LayoutParser::primary() {
         return expr;
     }
     
-    // Array literal
+    
     if (match({LayoutTokenType::LeftBracket})) {
         layout_ast::ArrayLiteral arr;
         while (!check(LayoutTokenType::RightBracket) && !isAtEnd()) {
@@ -824,9 +824,9 @@ void LayoutParser::synchronize() {
     }
 }
 
-// ============================================================================
-// LayoutConfigParser Implementation
-// ============================================================================
+
+
+
 
 LayoutConfigParser::LayoutConfigParser(LayoutEngine* engine)
     : engine_(engine) {}
@@ -854,7 +854,7 @@ std::filesystem::path LayoutConfigParser::getUserLayoutPath() {
 std::vector<std::string> LayoutConfigParser::getAvailableLayouts() {
     std::vector<std::string> layouts;
     
-    // Check user layouts
+    
     auto user_path = getUserLayoutPath();
     if (std::filesystem::exists(user_path)) {
         for (const auto& entry : std::filesystem::directory_iterator(user_path)) {
@@ -864,7 +864,7 @@ std::vector<std::string> LayoutConfigParser::getAvailableLayouts() {
         }
     }
     
-    // Check system layouts
+    
     auto system_path = getSystemLayoutPath();
     if (std::filesystem::exists(system_path)) {
         for (const auto& entry : std::filesystem::directory_iterator(system_path)) {
@@ -882,18 +882,18 @@ std::vector<std::string> LayoutConfigParser::getAvailableLayouts() {
 }
 
 bool LayoutConfigParser::load(const std::filesystem::path& path) {
-    // Check if path exists
+    
     if (!std::filesystem::exists(path)) {
-        // Try to create the directory
+        
         try {
             std::filesystem::create_directories(path);
         } catch (const std::exception& e) {
             reportError("Failed to create layout directory: " + std::string(e.what()));
         }
-        return true; // No layouts to load, but not an error
+        return true; 
     }
     
-    // Look for default.wmi or main.wmi
+    
     std::vector<std::string> default_names = {"default", "main", "init"};
     
     for (const auto& name : default_names) {
@@ -903,7 +903,7 @@ bool LayoutConfigParser::load(const std::filesystem::path& path) {
         }
     }
     
-    // Load all .wmi files in the directory
+    
     bool success = true;
     for (const auto& entry : std::filesystem::directory_iterator(path)) {
         if (entry.path().extension() == ".wmi") {
@@ -918,32 +918,32 @@ bool LayoutConfigParser::load(const std::filesystem::path& path) {
 }
 
 bool LayoutConfigParser::loadLayout(const std::string& filename, bool is_user) {
-    // Check for circular includes
+    
     if (std::find(include_stack_.begin(), include_stack_.end(), filename) != include_stack_.end()) {
         reportError("Circular include detected: " + filename);
         return false;
     }
     
-    // Check if already parsed
+    
     if (parsed_layouts_.find(filename) != parsed_layouts_.end()) {
         return true;
     }
     
-    // Find the file
+    
     auto file_path = findLayoutFile(filename, is_user);
     if (!file_path) {
         reportError("Layout file not found: " + filename);
         return false;
     }
     
-    // Read file contents
+    
     auto content = readFile(*file_path);
     if (!content) {
         reportError("Failed to read layout file: " + filename);
         return false;
     }
     
-    // Tokenize
+    
     LayoutLexer lexer(*content);
     auto tokens = lexer.tokenize();
     if (!lexer.getErrors().empty()) {
@@ -951,7 +951,7 @@ bool LayoutConfigParser::loadLayout(const std::string& filename, bool is_user) {
         return false;
     }
     
-    // Parse
+    
     LayoutParser parser(std::move(tokens));
     auto ast = parser.parse();
     if (!parser.getErrors().empty()) {
@@ -959,23 +959,23 @@ bool LayoutConfigParser::loadLayout(const std::string& filename, bool is_user) {
         return false;
     }
     
-    // Add to include stack
+    
     include_stack_.push_back(filename);
     
-    // Process includes first
+    
     for (const auto& include : ast->includes) {
         if (!resolveInclude(include)) {
             reportError("Failed to resolve include: " + include.layout_name);
         }
     }
     
-    // Remove from include stack
+    
     include_stack_.pop_back();
     
-    // Store parsed AST
+    
     parsed_layouts_[filename] = std::move(ast);
     
-    // Interpret the AST
+    
     return interpret(*parsed_layouts_[filename]);
 }
 
@@ -1034,7 +1034,7 @@ void LayoutConfigParser::evaluateStatement(const layout_ast::LayoutStatement& st
         using T = std::decay_t<decltype(arg)>;
         
         if constexpr (std::is_same_v<T, layout_ast::LayoutAssignment>) {
-            // Handle assignment
+            
             auto value = evaluateExpression(*arg.value);
             
             if (arg.name == "default_mode") {
@@ -1163,7 +1163,7 @@ void LayoutConfigParser::evaluateStatement(const layout_ast::LayoutStatement& st
                 evaluateBlock(*arg);
             }
         } else if constexpr (std::is_same_v<T, layout_ast::LayoutRule>) {
-            // Parse workspace pattern and apply layout rule
+            
             auto workspaces = parseWorkspacePattern(arg.workspace_pattern);
             for (int ws : workspaces) {
                 config_.workspace_modes[ws] = arg.mode;
@@ -1188,13 +1188,13 @@ LayoutConfigParser::evaluateExpression(const layout_ast::LayoutExpression& expr)
         } else if constexpr (std::is_same_v<T, layout_ast::BoolLiteral>) {
             return arg.value;
         } else if constexpr (std::is_same_v<T, layout_ast::Identifier>) {
-            // Look up variable
+            
             return std::string(arg.name);
         } else if constexpr (std::is_same_v<T, layout_ast::BinaryOp>) {
             auto left = evaluateExpression(*arg.left);
             auto right = evaluateExpression(*arg.right);
             
-            // Simple arithmetic for numeric types
+            
             if (std::holds_alternative<int>(left) && std::holds_alternative<int>(right)) {
                 int l = std::get<int>(left);
                 int r = std::get<int>(right);
@@ -1247,7 +1247,7 @@ LayoutConfigParser::evaluateExpression(const layout_ast::LayoutExpression& expr)
             }
             return 0;
         } else if constexpr (std::is_same_v<T, layout_ast::MemberAccess>) {
-            // Handle member access (e.g., config.gap_size)
+            
             return std::string("");
         } else if constexpr (std::is_same_v<T, layout_ast::ArrayLiteral>) {
             std::vector<std::string> result;
@@ -1268,14 +1268,14 @@ std::vector<int> LayoutConfigParser::parseWorkspacePattern(const std::string& pa
     std::vector<int> workspaces;
     
     if (pattern == "*" || pattern == "all") {
-        // All workspaces (1-12)
+        
         for (int i = 1; i <= 12; ++i) {
             workspaces.push_back(i);
         }
         return workspaces;
     }
     
-    // Check for range pattern (e.g., "1-5")
+    
     std::regex range_regex(R"((\d+)-(\d+))");
     std::smatch range_match;
     if (std::regex_match(pattern, range_match, range_regex)) {
@@ -1289,7 +1289,7 @@ std::vector<int> LayoutConfigParser::parseWorkspacePattern(const std::string& pa
         return workspaces;
     }
     
-    // Check for comma-separated list (e.g., "1,3,5,7")
+    
     std::regex list_regex(R"((\d+)(?:,(\d+))*)");
     std::smatch list_match;
     if (std::regex_match(pattern, list_match, list_regex)) {
@@ -1304,14 +1304,14 @@ std::vector<int> LayoutConfigParser::parseWorkspacePattern(const std::string& pa
         return workspaces;
     }
     
-    // Single workspace number
+    
     try {
         int ws = std::stoi(pattern);
         if (ws >= 1 && ws <= 12) {
             workspaces.push_back(ws);
         }
     } catch (...) {
-        // Invalid pattern
+        
     }
     
     return workspaces;
@@ -1320,7 +1320,7 @@ std::vector<int> LayoutConfigParser::parseWorkspacePattern(const std::string& pa
 void LayoutConfigParser::applyToEngine() {
     if (!engine_) return;
     
-    // Apply global settings
+    
     engine_->setGapSize(config_.bsp_params.gap_size);
     engine_->setBorderWidth(config_.bsp_params.border_width);
     engine_->setBorderColors(config_.focused_border_color, config_.unfocused_border_color);
@@ -1337,4 +1337,4 @@ void LayoutConfigParser::reportErrors(const std::vector<std::string>& errors) {
     }
 }
 
-} // namespace pblank
+} 

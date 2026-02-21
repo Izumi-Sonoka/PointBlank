@@ -16,7 +16,7 @@
 
 namespace pblank {
 
-// Helper to escape strings for file storage
+
 static std::string escapeString(const std::string& s) {
     std::string result;
     result.reserve(s.size());
@@ -33,7 +33,7 @@ static std::string escapeString(const std::string& s) {
     return result;
 }
 
-// Helper to unescape strings from file storage
+
 static std::string unescapeString(const std::string& s) {
     std::string result;
     result.reserve(s.size());
@@ -55,22 +55,22 @@ static std::string unescapeString(const std::string& s) {
 }
 
 bool SavedPosition::matches(const std::string& cls, const std::string& instance) const {
-    // Exact match
+    
     if (window_class == cls && window_instance == instance) {
         return true;
     }
     
-    // Wildcard match on class
+    
     if (window_class == "*" && window_instance == instance) {
         return true;
     }
     
-    // Wildcard match on instance
+    
     if (window_class == cls && window_instance == "*") {
         return true;
     }
     
-    // Match both wildcards
+    
     if (window_class == "*" && window_instance == "*") {
         return true;
     }
@@ -89,12 +89,12 @@ void FloatingWindowManager::initialize(Display* display,
     display_ = display;
     config_path_ = config_path;
     
-    // Create config directory if needed
+    
     if (config_path_.has_parent_path()) {
         std::filesystem::create_directories(config_path_.parent_path());
     }
     
-    // Load saved positions
+    
     loadFromDisk();
 }
 
@@ -104,6 +104,21 @@ void FloatingWindowManager::registerFloatingWindow(Window window,
                                                   int workspace_id, 
                                                   int monitor_id) {
     std::lock_guard<std::mutex> lock(mutex_);
+    
+    
+    if (floating_windows_.size() >= MAX_FLOATING_WINDOWS) {
+        
+        auto oldest_it = std::min_element(
+            floating_windows_.begin(),
+            floating_windows_.end(),
+            [](const auto& a, const auto& b) {
+                return a.second.last_seen < b.second.last_seen;
+            });
+        
+        if (oldest_it != floating_windows_.end()) {
+            floating_windows_.erase(oldest_it);
+        }
+    }
     
     FloatingWindowState& state = floating_windows_[window];
     state.window = window;
@@ -117,7 +132,7 @@ void FloatingWindowManager::registerFloatingWindow(Window window,
     state.last_seen = getCurrentTimeMs();
     state.created = state.last_seen;
     
-    // Read window identity
+    
     readWindowIdentity(window, state);
 }
 
@@ -148,7 +163,7 @@ void FloatingWindowManager::unregisterWindow(Window window) {
     
     auto it = floating_windows_.find(window);
     if (it != floating_windows_.end()) {
-        // Save position for this window class before removing
+        
         if (!it->second.window_class.empty()) {
             saved_positions_.push_back({
                 it->second.window_class,
@@ -161,7 +176,7 @@ void FloatingWindowManager::unregisterWindow(Window window) {
                 it->second.centered
             });
             
-            // Keep only last 100 saved positions
+            
             if (saved_positions_.size() > 100) {
                 saved_positions_.erase(saved_positions_.begin());
             }
@@ -206,7 +221,7 @@ std::optional<std::tuple<int, int, int, int>> FloatingWindowManager::getRestored
 ) const {
     std::lock_guard<std::mutex> lock(mutex_);
     
-    // Find matching saved position
+    
     for (const auto& saved : saved_positions_) {
         if (saved.matches(window_class, window_instance)) {
             return std::make_tuple(
@@ -226,7 +241,7 @@ void FloatingWindowManager::savePositionForClass(Window window) {
     
     auto it = floating_windows_.find(window);
     if (it != floating_windows_.end() && !it->second.window_class.empty()) {
-        // Remove old entry for same class
+        
         saved_positions_.erase(
             std::remove_if(saved_positions_.begin(), saved_positions_.end(),
                 [&](const SavedPosition& p) {
@@ -236,7 +251,7 @@ void FloatingWindowManager::savePositionForClass(Window window) {
             saved_positions_.end()
         );
         
-        // Add new entry
+        
         saved_positions_.push_back({
             it->second.window_class,
             it->second.window_instance,
@@ -262,7 +277,7 @@ std::pair<int, int> FloatingWindowManager::centerWindow(
         return {monitor_x + monitor_width / 2, monitor_y + monitor_height / 2};
     }
     
-    // Calculate centered position
+    
     int x = monitor_x + (monitor_width - it->second.width) / 2;
     int y = monitor_y + (monitor_height - it->second.height) / 2;
     
@@ -289,7 +304,7 @@ std::pair<int, int> FloatingWindowManager::ensureVisible(
     int y = it->second.y;
     bool adjusted = false;
     
-    // Ensure at least 100 pixels visible on each side
+    
     const int min_visible = 100;
     
     if (x + it->second.width < min_visible) {
@@ -381,12 +396,12 @@ void FloatingWindowManager::saveToDisk() {
         return;
     }
     
-    // Write header
+    
     file << "# Pointblank Floating Window Positions\n";
     file << "# Format: class|instance|x|y|width|height|workspace|centered\n";
     file << "# Lines starting with # are comments\n\n";
     
-    // Write saved positions
+    
     for (const auto& saved : saved_positions_) {
         file << escapeString(saved.window_class) << "|"
              << escapeString(saved.window_instance) << "|"
@@ -402,7 +417,7 @@ void FloatingWindowManager::saveToDisk() {
 }
 
 void FloatingWindowManager::loadFromDisk() {
-    // Note: Caller should hold mutex
+    
     
     if (config_path_.empty() || !std::filesystem::exists(config_path_)) {
         return;
@@ -417,12 +432,12 @@ void FloatingWindowManager::loadFromDisk() {
     
     std::string line;
     while (std::getline(file, line)) {
-        // Skip comments and empty lines
+        
         if (line.empty() || line[0] == '#') {
             continue;
         }
         
-        // Parse line
+        
         std::istringstream iss(line);
         std::string token;
         std::vector<std::string> tokens;
@@ -472,7 +487,7 @@ void FloatingWindowManager::readWindowIdentity(Window window, FloatingWindowStat
         return;
     }
     
-    // Read WM_CLASS
+    
     XClassHint* class_hint = XAllocClassHint();
     if (class_hint) {
         if (XGetClassHint(display_, window, class_hint)) {
@@ -482,7 +497,7 @@ void FloatingWindowManager::readWindowIdentity(Window window, FloatingWindowStat
         XFree(class_hint);
     }
     
-    // Read window title
+    
     XTextProperty text_prop;
     if (XGetWMName(display_, window, &text_prop)) {
         if (text_prop.value) {
@@ -504,4 +519,4 @@ std::optional<SavedPosition> FloatingWindowManager::findSavedPosition(
     return std::nullopt;
 }
 
-} // namespace pblank
+} 

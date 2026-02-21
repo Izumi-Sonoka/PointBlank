@@ -14,12 +14,12 @@ namespace pblank {
 int calculateEdgeGap(const GapConfig& config, bool touches_edge, bool has_adjacent) {
     int gap = 0;
     
-    // Outer gap applies if touching screen edge
+    
     if (touches_edge) {
         gap += config.outer_gap;
     }
     
-    // Inner gap applies if there's an adjacent window (half on each side)
+    
     if (has_adjacent) {
         gap += config.inner_gap / 2;
     }
@@ -37,22 +37,22 @@ GapRect applyGaps(const GapRect& rect, const GapConfig& config,
                   bool has_adjacent_right) {
     GapRect result = rect;
     
-    // Calculate gap for each edge
+    
     int top_gap = 0;
     int bottom_gap = 0;
     int left_gap = 0;
     int right_gap = 0;
     
     if (is_single_window) {
-        // Single window: use outer gaps on all edges
+        
         top_gap = config.getTopGap();
         bottom_gap = config.getBottomGap();
         left_gap = config.getLeftGap();
         right_gap = config.getRightGap();
     } else {
-        // Multiple windows: combine outer and inner gaps
         
-        // Top edge
+        
+        
         if (touches_top) {
             top_gap = config.getTopGap();
         }
@@ -60,7 +60,7 @@ GapRect applyGaps(const GapRect& rect, const GapConfig& config,
             top_gap += config.inner_gap / 2;
         }
         
-        // Bottom edge
+        
         if (touches_bottom) {
             bottom_gap = config.getBottomGap();
         }
@@ -68,7 +68,7 @@ GapRect applyGaps(const GapRect& rect, const GapConfig& config,
             bottom_gap += config.inner_gap / 2;
         }
         
-        // Left edge
+        
         if (touches_left) {
             left_gap = config.getLeftGap();
         }
@@ -76,7 +76,7 @@ GapRect applyGaps(const GapRect& rect, const GapConfig& config,
             left_gap += config.inner_gap / 2;
         }
         
-        // Right edge
+        
         if (touches_right) {
             right_gap = config.getRightGap();
         }
@@ -85,7 +85,7 @@ GapRect applyGaps(const GapRect& rect, const GapConfig& config,
         }
     }
     
-    // Apply gaps
+    
     result.shrink(left_gap, top_gap, right_gap, bottom_gap);
     
     return result;
@@ -111,7 +111,7 @@ GapRect applyInnerGaps(const GapRect& rect, const GapConfig& config,
                        bool has_adjacent_left, bool has_adjacent_right) {
     GapRect result = rect;
     
-    // Inner gap is split between adjacent windows
+    
     int top_gap = has_adjacent_top ? config.inner_gap / 2 : 0;
     int bottom_gap = has_adjacent_bottom ? config.inner_gap / 2 : 0;
     int left_gap = has_adjacent_left ? config.inner_gap / 2 : 0;
@@ -122,4 +122,4 @@ GapRect applyInnerGaps(const GapRect& rect, const GapConfig& config,
     return result;
 }
 
-} // namespace pblank
+} 

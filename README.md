@@ -1,23 +1,133 @@
-# Point Blank - Infinite X11 Tiling Window Manager
+# Point:Blank -  X11 Infinite Layout Window Manager
 
-A modern, DSL-configured tiling window manager for X11 with "Infinite Layouts", "Infinite Workspace" and crash-proof configuration system.
+> _"Direct, straight-to-the-metal performance. No bloat, no overhead, just efficiency. (And your Samsung smart fridge will love it too.)"_
 
-## Features
+Version: 1.0.1.0  
+Last Updated: 19th February 2026 (1500 GMT+8)  
+Maintained by:  Point:project
 
-- **DSL Configuration**: `.wmi` (Window Manager Interface) files with QML-like syntax
-- **Crash-Proof Design**: Visual OSD "Toaster" + D-Bus notifications for errors
-- **8 Layout Modes**: BSP, Monocle, Master-Stack, Centered Master, Dynamic Grid, Dwindle Spiral, Tabbed Stacked, Infinite Canvas
-- **Full EWMH Compliance**: 50+ atoms supported for desktop environment compatibility
-- **Extension System v2.0**: Shared object loader with ABI validation and hook system
-- **Multi-Monitor Support**: XRandR query and event handling for dynamic changes
-- **Modern C++20**: RAII everywhere, no raw pointers, `std::variant` AST
-- **Preprocessor System**: `#import` and `#include` for modular configs
-- **Conditional Rules**: Per-window configuration with if statements
-- **Infinite Workspaces**: Dynamic workspace creation with auto-remove
-- **Hot-Reload**: Automatic configuration reload on file changes
+---
+
+## Table of Contents
+
+1. [Introduction](#introduction)
+2. [Why Point:Blank](#why-pointblank)
+3. [Memory Footprint](#memory-footprint)
+4. [Installation](#installation)
+5. [Configuration](#configuration)
+6. [Layout Modes](#layout-modes)
+7. [The DSL](#the-dsl)
+8. [Extension System](#extension-system)
+9. [External Bar Integration](#external-bar-integration)
+10. [EWMH Compliance](#ewmh-compliance)
+11. [Architecture Overview](#architecture-overview)
+12. [Contributing](#contributing)
+13. [FAQ](#faq)
+
+---
+
+## Introduction
+
+### What is Point:Blank?
+
+Point:Blank is a modern, source-built tiling window manager for X11 with infinite layouts, infinite workspaces, and a crash-proof configuration system. It's configured with a proper DSL — not shell scripts, not C patches, not YAML nightmares. Think of it as what happens when someone gets mad enough at existing WMs to write their own.
+
+### The Name
+
+- **Point**: The fundamental atom of coordinates. Every window is a singular, precise location in 2D space.
+- **Blank**: The Total Failure state. Bad config? You get nothing but the void. Goodbye desktop.
+- **Point-Blank**: Direct. Straight-to-the-metal. No middleware.
+
+### Who Makes This?
+
+**N3ZT POSSIBLE G3N** — upcoming  
+**Point:project**  
+Maintained by **Astaraxia Linux's Maniac.**
+
+---
+
+## Why Point:Blank?
+
+- **401 KB PSS at idle** — leaner than dwm while doing more than i3
+- **8 layout modes** — not just one "tiling" mode like every other WM
+- **A real DSL** — `"SUPER, Q": "killactive"` just works
+- **Full EWMH compliance** — 50+ atoms, polybar/lemonbar/yambar just works
+- **Crash-proof** — bad config shows a toast notification, not a blank screen
+- **Infinite workspaces** — dynamic creation, auto-remove on empty
+- **Extension system v2.0** — dlopen-based plugins with ABI validation
+- **Hot-reload** — edit config, save, done. No restart.
+
+### Why Not Point:Blank?
+
+- You want Wayland (this is X11 only)
+- You're a normal person who uses a DE
+- You don't want to think about window managers at all (valid, honestly)
+
+---
+
+## Memory Footprint
+Because this is the whole point. verified with `smem`, `pmap`, and `/proc/[pid]/smaps`.
+
+### IDLE
+Idle Memory usage.
+
+#### Numbers
+
+|Metric|Value|What it means|
+|---|---|---|
+|**PSS (Fair Share)**|**401 KB**|Real-world RAM impact on your system|
+|**Own Memory**|**250 KB**|Binary + heap|
+|**Active Dirty Pages**|**90 KB**|Memory actually modified by core logic|
+|**Total RSS**|**3.6 MB**|Including all shared system libraries|
+
+#### Breakdown
+
+```
+Pointblank Core:
+  Binary Code:  184 KB  (76.7% of own memory)
+  Heap:          48 KB  (20.0%)
+  Stack:          8 KB  (3.3%)
+  ─────────────────────
+  Total:        240 KB RSS | 56 KB Dirty
+
+System Libraries (shared pages, counted fractionally):
+  libc.so.6:          1,284 KB
+  libm.so.6:            568 KB
+  libharfbuzz.so:       388 KB
+  libglib-2.0.so:       372 KB
+  libgio-2.0.so:        288 KB
+  ─────────────────────
+  Total:            3,396 KB RSS | 16 KB Dirty
+```
+
+#### vs. Everyone Else
+
+|Window Manager|PSS|vs Point:Blank|Notes|
+|---|---|---|---|
+|**Point:Blank**|**401 KB**|—|8 layouts, full EWMH, DSL|
+|dwm|~2,500 KB|6x larger|3 layouts, patch C to configure|
+|bspwm|~10,000 KB|25x larger|1 layout (BSP), shell scripts|
+|i3|~18,000 KB|45x larger|1 layout, complex IPC|
+|Openbox|~12,000 KB|30x larger|Floating only|
+
+#### Why So Lean?
+
+- **Zero-copy parsing**: `std::string_view` throughout the DSL — no string allocations during config parse
+- **Stack preference**: RAII with `std::array` over heap where possible
+- **Xlib purity**: Direct X Server communication, no middleware
+- **No RTTI/exceptions in release**: `-fno-rtti -fno-exceptions` in Release build
+- **LTO**: Full link-time optimisation across all 61 files
+
+**Hardware tested on**: Lenovo 500e 2nd Gen Chromebook, Arch Linux  
+**Codebase**: C++20, 19,010 lines across 61 files (29 .cpp + 32 .hpp)
+
+> _"Optimized for everything. (including your samsung smart fridge.)"_
+
+---
 
 ## Architecture Overview
 
+Clean, modular, no spaghetti. Each component does one thing well:
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                      Point Blank WM                         │
@@ -29,8 +139,8 @@ A modern, DSL-configured tiling window manager for X11 with "Infinite Layouts", 
 ├─────────────────────────────────────────────────────────────┤
 │  ConfigParser (DSL Interpreter)                             │
 │    ├─ Lexer: Tokenization of .wmi files                     │
-│    ├─ Parser: Recursive Descent → AST (std::variant)       │
-│    ├─ Interpreter: AST → Runtime Config                    │
+│    ├─ Parser: Recursive Descent → AST (std::variant)        │
+│    ├─ Interpreter: AST → Runtime Config                     │
 │    ├─ Preprocessor: #import / #include resolution           │
 │    └─ Conditional Rules: if statements with member access   │
 ├─────────────────────────────────────────────────────────────┤
@@ -51,7 +161,7 @@ A modern, DSL-configured tiling window manager for X11 with "Infinite Layouts", 
 │    ├─ 50+ EWMH Atoms (_NET_SUPPORTED, _NET_CURRENT_DESKTOP) │
 │    ├─ Window Types (normal, dialog, utility, dock)          │
 │    ├─ Window States (fullscreen, maximized, sticky)         │
-│    ├─ Custom Pointblank Atoms (external bar integration)    │
+│    ├─ Custom Point:Blank Atoms (external bar integration)   │
 │    └─ Root Window Properties                                │
 ├─────────────────────────────────────────────────────────────┤
 │  MonitorManager (Multi-Monitor)                             │
@@ -76,222 +186,192 @@ A modern, DSL-configured tiling window manager for X11 with "Infinite Layouts", 
 │    ├─ Keybind registration from config                      │
 │    ├─ X11 key grabbing                                      │
 │    └─ Action dispatch (WM commands / exec)                  │
+├─────────────────────────────────────────────────────────────┤
+│  ScratchpadManager                                          │
+│    ├─ Scratchpad window storage                             │
+│    ├─ Show/hide toggle commands                             │
+│    └─ Per-window scratchpad assignment                      │
+├─────────────────────────────────────────────────────────────┤
+│  WindowSwallower                                            │
+│    ├─ Terminal window detection                             │
+│    ├─ Child window tracking                                 │
+│    └─ Automatic swallow/unswallow                           │
+├─────────────────────────────────────────────────────────────┤
+│  IPCServer                                                  │
+│    ├─ Unix socket server                                    │
+│    ├─ JSON command protocol                                 │
+│    └─ External control (reload, workspace switch, etc.)     │
+├─────────────────────────────────────────────────────────────┤
+│  StartupApps                                                │
+│    ├─ XDG autostart parsing                                 │
+│    └─ Application launch on session start                   │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## Building
+---
 
-### Dependencies
+## Installation
 
-- **X11 Libraries**: `libx11`, `libxrender`, `libxft`, `libxrandr`
-- **Cairo**: For OSD rendering
-- **GLib/GIO**: For D-Bus notifications
-- **C++20 Compiler**: GCC 10+ or Clang 12+
-- **CMake**: 3.20+
+### Prerequisites
 
-### Build Instructions
+You'll need:
 
-#### Install dependencies 
-- Debian / Ubuntu
-``` bash
-sudo apt install libx11-dev libxrender-dev libxft-dev libxrandr-dev libcairo2-dev libglib2.0-dev cmake g++
+- Linux
+- A C++20 compiler (GCC 10+ or Clang 12+)
+- CMake 3.20+
+- X11 libraries (you're on X11, so probably already have most of these)
+- Cairo (for the OSD toaster)
+- GLib/GIO (for D-Bus notifications)
+- Coffee (not technically required, but proven to help)
+
+### Install Dependencies
+
+**Arch / Manjaro**
+
+```bash
+sudo pacman -S libx11 libxrender libxft libxrandr cairo glib2 cmake gcc xcb-util-wm xcb-util-keysyms
 ```
-- Arch / Manjaro
-``` bash
-sudo pacman -S libx11 libxrender libxft libxrandr cairo glib2 cmake gcc
+
+**Debian / Ubuntu**
+
+```bash
+sudo apt install libx11-dev libxrender-dev libxft-dev libxrandr-dev libcairo2-dev libglib2.0-dev libxcb-ewmh-dev libxcb-icccm4-dev cmake g++
 ```
-- Fedora
-``` bash
-sudo dnf install libX11-devel libXrender-devel libXft-devel libXrandr-devel cairo-devel glib2-devel cmake gcc-c++
+
+**Fedora**
+
+```bash
+sudo dnf install libX11-devel libXrender-devel libXft-devel libXrandr-devel cairo-devel glib2-devel xcb-util-wm-devel xcb-util-keysyms-devel cmake gcc-c++
 ```
-- Gentoo
-``` bash
+
+**Gentoo**
+
+```bash
 sudo emerge --ask x11-libs/libX11 x11-libs/libXrender x11-libs/libXft x11-libs/libXrandr x11-libs/cairo dev-libs/glib dev-build/cmake sys-devel/gcc
 ```
-- openSUSE
-``` bash
-sudo zypper install libX11-devel libXrender-devel libXft-devel libXrandr-devel cairo-devel glib2-devel cmake gcc-c++
-```
-- Alpine
-``` bash
+
+**Alpine**
+
+```bash
 sudo apk add libx11-dev libxrender-dev libxft-dev libxrandr-dev cairo-dev glib-dev cmake g++
 ```
 
-``` bash
-# Build
-mkdir build && cd build
-cmake ..
-make -j$(nproc)
+### Build
 
-# Install
+```bash
+git clone https://github.com/Astaraxia-Linux/Pointblank
+cd Pointblank
+mkdir build && cd build
+cmake -DCMAKE_BUILD_TYPE=Release ..
+make -j$(nproc)
 sudo make install
 ```
 
+Go grab a coffee. 30 seconds on x86, a bit longer on ARM. Less than recompiling Firefox by a factor of approximately forever.
+
+### Start Point:Blank
+
+Add to your `~/.xinitrc`:
+
+```bash
+exec pointblank
+```
+
+Or use the installed `.desktop` file with your display manager.
+
+---
+
 ## Configuration
+
+No shell scripts. No C patching. No YAML. Just a DSL that makes sense.
 
 ### File Structure
 
 ```
 ~/.config/pblank/
-├── pointblank.wmi          # Main configuration
+├── pointblank.wmi              # Main configuration
 └── extensions/
-    ├── pb/                 # Point Blank built-in extensions (#include)
-    │   └── lib*.so         # Extension shared objects
-    └── user/               # User custom extensions (#import)
-        └── *.so            # User extension shared objects
+    ├── pb/                     # Built-in extensions (#include)
+    │   └── lib*.so
+    └── user/                   # Your custom extensions (#import)
+        └── *.so
 ```
 
 ### Example Configuration
 
 ```wmi
-// Load built-in extension from ~/.config/pblank/extensions/pb/
+// Load built-in extensions
 #include animation
 
+// Core config
 pointblank: {
     window_rules: {
-        opacity: 0.8
+        opacity: 0.95
         blur: true
     };
-    
+
+    workspaces: {
+        max_workspace: 12
+    };
+
     binds: {
-        "SUPER, Q": "killactive"
-        "SUPER, F": "fullscreen"
-        "SUPER, RETURN": exec: "alacritty"
+        "SUPER, Q":          "killactive"
+        "SUPER, F":          "fullscreen"
+        "SUPER, RETURN":     exec: "alacritty"
+        "SUPER, D":          exec: "rofi -show drun"
+        "SUPER, 1":          "workspace 1"
+        "SUPER, 2":          "workspace 2"
+        "SUPER, H":          "focusleft"
+        "SUPER, L":          "focusright"
+        "SUPER, K":          "focusup"
+        "SUPER, J":          "focusdown"
+        "SUPER, SHIFT, Q":   "quit"
+    };
+
+    animations: {
+        enabled: true
+        curve: "ease-in-out"
     };
 };
 
-// Per-application rules with conditional if statements
+// Per-application rules
 if (window.class == "Firefox") {
     window_rules: {
         opacity: 1.0
-    };
-};
-
-// Conditional with member access
-if (window.title.contains(" - Visual Studio Code")) {
-    window_rules: {
-        layout: "monocle"
+        blur: false
     };
 };
 ```
 
-See [GRAMMAR.md](GRAMMAR.md) for complete DSL specification.
+See [GRAMMAR.md](GRAMMAR.md) for the full DSL specification.
 
-## Memory Safety Design
+### Hot-Reload
 
-Point Blank uses modern C++20 idioms to ensure memory safety:
+Point:Blank watches your config file. Save it, it reloads. No restart needed. If your config is broken, you get a toast notification and it falls back to defaults — the WM keeps running.
 
-### RAII for X11 Resources
+---
 
-```cpp
-// Custom deleters for X11 types
-struct DisplayDeleter {
-    void operator()(Display* display) const {
-        if (display) XCloseDisplay(display);
-    }
-};
+## Layout Modes
 
-using DisplayPtr = std::unique_ptr<Display, DisplayDeleter>;
-```
+Eight layouts. Not one "tiling" mode. Eight.
 
-### No Raw `new/delete`
+### Overview
 
-All allocations use smart pointers:
+|Layout|Description|
+|---|---|
+|**BSP**|Binary Space Partition — recursive screen splitting|
+|**Monocle**|One window fullscreen at a time|
+|**MasterStack**|One master, rest stack on the side|
+|**CenteredMaster**|Master in center, stacks on both sides|
+|**DynamicGrid**|Uniform N×M grid based on window count|
+|**DwindleSpiral**|Fibonacci spiral outward|
+|**TabbedStacked**|Tab bar with stacked tiling below|
+|**InfiniteCanvas**|Unbounded virtual canvas with viewport panning|
 
-```cpp
-// Window management
-std::unordered_map<Window, std::unique_ptr<ManagedWindow>> clients_;
+### Layouts Visualised
 
-// Component ownership
-std::unique_ptr<ConfigParser> config_parser_;
-std::unique_ptr<LayoutEngine> layout_engine_;
-std::unique_ptr<Toaster> toaster_;
-```
+**BSP**
 
-### Type-Safe AST with `std::variant`
-
-```cpp
-using ExpressionValue = std::variant<
-    IntLiteral,
-    FloatLiteral,
-    StringLiteral,
-    BinaryOp,
-    UnaryOp
->;
-```
-
-## Error Handling: The "Toaster" System
-
-Point Blank never crashes on configuration errors. Instead:
-
-1. **Visual OSD**: Renders error message in top-left corner
-   - Red (#FF0000) for errors
-   - Green (#00FF00) for success
-   - Yellow (#FFFF00) for warnings
-   - Blue (#0080FF) for info
-
-2. **D-Bus Notification**: Sends system notification simultaneously
-
-3. **Fallback Config**: Falls back to hardcoded defaults if parsing fails
-
-```cpp
-if (!loadConfigSafe()) {
-    toaster_->error("Configuration failed - using defaults");
-    fallbackToDefaultConfig();
-}
-```
-
-## Layout Engine
-
-### BSP Tree Structure
-
-```cpp
-class BSPNode {
-    // Leaf: Contains a window
-    ManagedWindow* window_;
-    
-    // Internal: Split with two children
-    std::unique_ptr<BSPNode> left_;
-    std::unique_ptr<BSPNode> right_;
-    SplitType split_type_;  // Horizontal or Vertical
-    double ratio_;          // 0.0 - 1.0 split position
-};
-```
-
-### Layout Visitor Pattern
-
-Layouts are implemented as visitors that traverse the BSP tree:
-
-```cpp
-class LayoutVisitor {
-    virtual void visit(BSPNode* root, const Rect& bounds) = 0;
-};
-
-// Example: BSP tiling
-class BSPLayout : public LayoutVisitor {
-    void visit(BSPNode* root, const Rect& bounds) override {
-        // Calculate geometries recursively
-    }
-};
-```
-
-### Available Layout Modes
-
-| Layout | Description |
-|--------|-------------|
-| BSPLayout | Binary Space Partition tiling |
-| MonocleLayout | Fullscreen single window |
-| MasterStackLayout | Classic master-stack (dwm-style) |
-| CenteredMasterLayout | Center column with flanking stacks |
-| DynamicGridLayout | Uniform N×M grid |
-| DwindleSpiralLayout | Fibonacci spiral tiling |
-| TabbedStackedLayout | Tabbed interface with tab bar |
-| InfiniteCanvasLayout | Virtual coordinate system with viewport |
-
-### Detailed Layout Documentation
-
-#### BSPLayout (Binary Space Partition)
-Traditional tiling layout that recursively splits the screen into two partitions.
 ```
 ┌─────────┬───┐
 │         │   │
@@ -302,19 +382,8 @@ Traditional tiling layout that recursively splits the screen into two partitions
 └─────┴───────┘
 ```
 
-#### MonocleLayout
-All windows are displayed fullscreen, one at a time.
-```
-┌───────────────┐
-│               │
-│   Focused     │
-│    Window     │
-│               │
-└───────────────┘
-```
+**MasterStack**
 
-#### MasterStackLayout
-One master window takes up half the screen, remaining windows stack on the other side.
 ```
 ┌─────────┬─────┐
 │         │ S1  │
@@ -325,29 +394,19 @@ One master window takes up half the screen, remaining windows stack on the other
 └─────────┴─────┘
 ```
 
-#### CenteredMasterLayout
-Master window centered with equal-sized stacks on both sides.
+**CenteredMaster**
+
 ```
 ┌─────┬─────────┬─────┐
-│ S1  │ Master  │ S2  │
-│     │         │     │
-├─────┼─────────┼─────┤
-│ S3  │         │ S4  │
+│ L1  │         │ R1  │
+│     │ Master  │     │
+├─────┤         ├─────┤
+│ L2  │         │ R2  │
 └─────┴─────────┴─────┘
 ```
 
-#### DynamicGridLayout
-Windows arranged in a uniform grid based on window count.
-```
-┌─────┬─────┬─────┐
-│  1  │  2  │  3  │
-├─────┼─────┼─────┤
-│  4  │  5  │  6  │
-└─────┴─────┴─────┘
-```
+**DwindleSpiral**
 
-#### DwindleSpiralLayout
-Fibonacci spiral pattern - windows spiral outward in size.
 ```
 ┌───────────────┐
 │               │
@@ -360,342 +419,368 @@ Fibonacci spiral pattern - windows spiral outward in size.
 └───────┴───────┘
 ```
 
-#### TabbedStackedLayout
-Tab bar at top with stacked windows below.
+**InfiniteCanvas**
+
 ```
-┌─────────────────────┐
-│ [Tab1][Tab2][Tab3]  │
-├─────────┬───────────┤
-│         │           │
-│   A     │     B     │
-│         │           │
-├─────────┼───────────┤
-│         │           │
-│   C     │     D     │
-└─────────┴───────────┘
+    ┌────────────────────┐
+    │      Viewport      │
+    │   ┌──────────┐     │
+    │   │ Window A │     │
+    │   └──────────┘     │
+    │          ┌───────┐ │
+    │          │   B   │ │
+    └──────────┴───────┴─┘
+    (Windows can live anywhere in virtual space)
 ```
 
-#### InfiniteCanvasLayout
-Unbounded virtual canvas with viewport panning.
-```
-    ┌────────────────┐
-    │   Viewport     │
-    │  ┌──────────┐  │
-    │  │ Window A │  │
-    │  └──────────┘  │
-    │         ┌───┐  │
-    │         │ B │  │
-    └─────────────┘  │
-      Windows can be │
-      anywhere!      │
+### Switching Layouts
+
+```wmi
+binds: {
+    "SUPER, SPACE":       "cyclelayout"
+    "SUPER, M":           "layout monocle"
+    "SUPER, T":           "layout bsp"
+    "SUPER, G":           "layout grid"
+};
 ```
 
-### Adding New Layouts
+### Adding Custom Layouts
+
+Point:Blank uses the visitor pattern — implement one interface, register it:
 
 ```cpp
-class MyCustomLayout : public LayoutVisitor {
-    void visit(BSPNode* root, const Rect& bounds) override {
-        // Implement custom layout logic
-        // Traverse tree and call window->setGeometry(...)
+class MyLayout : public LayoutVisitor {
+    void visit(BSPNode* root, const Rect& bounds, Display* display) override {
+        // Your layout logic here
+        // Traverse tree, call XMoveResizeWindow on each leaf
     }
 };
 
-// Register layout
-layout_engine_->setLayout(workspace, std::make_unique<MyCustomLayout>());
+layout_engine_->setLayout(workspace, std::make_unique<MyLayout>());
 ```
 
-## EWMH Compliance
+---
 
-Pointblank implements full EWMH compliance with 50+ atoms:
+## The DSL
 
-### Supported Atoms
+Point:Blank uses a custom DSL called `.wmi`. It's configured like a language, not like a config file.
 
-- **Root Properties**: `_NET_SUPPORTED`, `_NET_SUPPORTING_WM_CHECK`, `_NET_CURRENT_DESKTOP`, `_NET_NUMBER_OF_DESKTOPS`, `_NET_DESKTOP_NAMES`
-- **Window Properties**: `_NET_WM_NAME`, `_NET_WM_VISIBLE_NAME`, `_NET_WM_DESKTOP`, `_NET_WM_WINDOW_TYPE`, `_NET_WM_STATE`
-- **Window Types**: `_NET_WM_WINDOW_TYPE_NORMAL`, `_NET_WM_WINDOW_TYPE_DIALOG`, `_NET_WM_WINDOW_TYPE_UTILITY`, `_NET_WM_WINDOW_TYPE_DOCK`
-- **Window States**: `_NET_WM_STATE_FULLSCREEN`, `_NET_WM_STATE_MAXIMIZED_VERT`, `_NET_WM_STATE_MAXIMIZED_HORZ`, `_NET_WM_STATE_STICKY`
-- **Custom Pointblank Atoms**: For external bar integration
+### Basics
 
-## Extension System v2.0
+```wmi
+// Single-line comment
+/* Multi-line comment */
 
-### Architecture
+// Types
+let opacity = 0.95;         // float
+let max_ws  = 12;           // int
+let terminal = "alacritty"; // string
+let blur = true;            // bool
+```
 
-```cpp
-class ExtensionLoader {
-    // Load shared object
-    void* handle = dlopen("libmyextension.so", RTLD_LAZY);
-    
-    // Validate ABI version
-    ExtensionABI* abi = static_cast<ExtensionABI*>(dlsym(handle, "extension_abi"));
-    if (abi->version != EXPECTED_ABI_VERSION) {
-        dlclose(handle);
-        return;
-    }
-    
-    // Register hooks
-    abi->onWindowMap = myWindowMapHandler;
-    abi->onWindowFocus = myWindowFocusHandler;
+### Blocks
+
+```wmi
+pointblank: {
+    window_rules: {
+        opacity: 0.95
+    };
+};
+```
+
+### Keybinds
+
+```wmi
+binds: {
+    "SUPER, Q":          "killactive"
+    "SUPER, RETURN":     exec: "alacritty"
+    "SUPER, SHIFT, Q":   "quit"
+};
+```
+
+Modifiers: `SUPER`, `ALT`, `CTRL`, `SHIFT`, `L_SHIFT`, `R_SHIFT`
+
+### Conditionals
+
+```wmi
+if (window.class == "Firefox") {
+    window_rules: {
+        opacity: 1.0
+        blur: false
+    };
+} else {
+    window_rules: {
+        opacity: 0.9
+    };
+};
+```
+
+### Preprocessor
+
+```wmi
+#include animation       // Built-in extension from extensions/pb/
+#import my_extension     // Your extension from extensions/user/
+```
+
+### Autostart
+
+```wmi
+autostart: {
+    exec: "picom -b"
+    exec: "dunst"
+    exec: "nitrogen --restore"
+};
+```
+
+See [GRAMMAR.md](GRAMMAR.md) for the complete specification.
+
+---
+
+## Extension System
+
+Point:Blank loads extensions as shared objects at runtime. Write your extension in C or C++, compile it, drop the `.so` in the right folder, `#import` it in your config.
+
+### API v2.0
+
+```c
+// myextension.c
+#include <pointblank/extension.h>
+
+static void on_window_map(Window window) {
+    // do something when a window opens
+}
+
+ExtensionABI extension_abi = {
+    .version         = PB_ABI_VERSION,
+    .name            = "myextension",
+    .onWindowMap     = on_window_map,
+    .onWindowUnmap   = NULL,
+    .onWindowFocus   = NULL,
+    .onWorkspaceChange = NULL,
 };
 ```
 
 ### Available Hooks
 
-- `onWindowMap` - Called when a window is mapped
-- `onWindowUnmap` - Called when a window is unmapped
-- `onWindowFocus` - Called when window focus changes
-- `onWorkspaceChange` - Called when workspace changes
+|Hook|Triggered when|
+|---|---|
+|`onWindowMap`|A window is opened/mapped|
+|`onWindowUnmap`|A window is closed/unmapped|
+|`onWindowFocus`|Focus changes to a different window|
+|`onWorkspaceChange`|User switches workspace|
 
-### Health Monitoring
+### ABI Validation
 
-Extensions are monitored for:
-- Memory usage
-- Response time
-- Crash detection
+Extensions are checked for ABI version compatibility at load time. Outdated extension? Point:Blank logs a warning and skips it — it doesn't crash.
 
-## Multi-Monitor Support
+See extensions.md for the full API reference and examples.
 
-### XRandR Integration
+---
 
-```cpp
-class MonitorManager {
-    // Query available monitors
-    void queryMonitors() {
-        XRRScreenResources* resources = XRRGetScreenResources(display, root);
-        for (int i = 0; i < resources->noutput; i++) {
-            XRROutputInfo* info = XRRGetOutputInfo(display, resources, resources->outputs[i]);
-            // Process monitor info
-        }
-    }
-    
-    // Handle dynamic changes
-    void handleXRandREvent(XRRUpdateNotifyEvent* event) {
-        // Re-query monitors on change
-        queryMonitors();
-    }
-};
+## External Bar Integration
+
+Polybar, lemonbar, yambar — they all work. Point:Blank writes state to both X11 root window properties and files so you can use whichever approach you prefer.
+
+### File-Based (Easiest)
+
+```bash
+# Get current layout
+cat /tmp/pointblank/currentlayout
+# Output: BSP
 ```
 
-## DSL Parser Architecture
+### X11 Properties
 
-### Three-Phase Design
-
-1. **Lexer**: Source → Tokens
-   ```cpp
-   std::vector<Token> tokens = lexer.tokenize();
-   ```
-
-2. **Parser**: Tokens → AST
-   ```cpp
-   auto ast = parser.parse(); // std::unique_ptr<ast::ConfigFile>
-   ```
-
-3. **Interpreter**: AST → Runtime Config
-   ```cpp
-   config_parser_->interpret(ast);
-   ```
-
-### Recursive Descent Parser
-
-Each grammar rule becomes a parsing function:
-
-```cpp
-std::unique_ptr<Expression> Parser::expression() {
-    return logicalOr();
-}
-
-std::unique_ptr<Expression> Parser::logicalOr() {
-    auto left = logicalAnd();
-    while (match({TokenType::Or})) {
-        auto right = logicalAnd();
-        left = makeBinaryOp(BinaryOp::Or, left, right);
-    }
-    return left;
-}
+```bash
+xprop -root _PB_CURRENT_WORKSPACE    # Current workspace (0-indexed)
+xprop -root _PB_ACTIVE_WINDOW_TITLE  # Focused window title
+xprop -root _PB_LAYOUT_MODE          # Current layout name
+xprop -root _PB_OCCUPIED_WORKSPACES  # Which workspaces have windows
 ```
 
-### Preprocessor Directives
+### Custom Atoms
 
-```cpp
-// Import from user extensions
-#import my_custom_extension  // Loads ~/./config/pblank/extensions/user/libmy_custom_extension.so
+|Atom|Type|Description|
+|---|---|---|
+|`_PB_CURRENT_WORKSPACE`|CARDINAL|Current workspace (0-indexed)|
+|`_PB_WORKSPACE_NAMES`|UTF8_STRING|Comma-separated workspace names|
+|`_PB_OCCUPIED_WORKSPACES`|CARDINAL[]|Workspaces that have windows|
+|`_PB_ACTIVE_WINDOW_TITLE`|UTF8_STRING|Title of focused window|
+|`_PB_ACTIVE_WINDOW_CLASS`|UTF8_STRING|WM_CLASS of focused window|
+|`_PB_LAYOUT_MODE`|UTF8_STRING|Current layout name|
+|`_PB_WORKSPACE_WINDOW_COUNTS`|CARDINAL[]|Window count per workspace|
 
-// Include built-in extensions
-#include animation
-#include rounded_corners
+### Standard EWMH
+
+Point:Blank also sets all standard `_NET_*` properties, so polybar's built-in `internal/xworkspaces` and `internal/xwindow` modules work out of the box.
+
+See EXTERNAL_BAR_INTEGRATION.md for polybar/lemonbar/yambar config examples.
+
+---
+
+## EWMH Compliance
+
+50+ atoms. Full compliance. Your desktop tools just work.
+
+### What's Implemented
+
+- **Root properties**: `_NET_SUPPORTED`, `_NET_SUPPORTING_WM_CHECK`, `_NET_CURRENT_DESKTOP`, `_NET_NUMBER_OF_DESKTOPS`, `_NET_DESKTOP_NAMES`, `_NET_WORKAREA`
+- **Client list**: `_NET_CLIENT_LIST`, `_NET_CLIENT_LIST_STACKING`
+- **Window types**: Normal, dialog, utility, toolbar, splash, menu, dock, desktop — all handled
+- **Window states**: Fullscreen, maximized, hidden, sticky, above, below, demands attention
+- **Window actions**: Move, resize, minimize, fullscreen, close, change desktop
+- **Client messages**: `_NET_CLOSE_WINDOW`, `_NET_ACTIVE_WINDOW`, `_NET_WM_MOVERESIZE`
+- **Struts**: Status bars reserve their space correctly via `_NET_WM_STRUT_PARTIAL`
+
+---
+
+## Architecture Overview
+
+Clean, modular, no spaghetti. Each component does one thing.
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    Point:Blank WM                       │
+├─────────────────────────────────────────────────────────┤
+│  WindowManager       — Event loop & orchestration       │
+├─────────────────────────────────────────────────────────┤
+│  ConfigParser        — Lexer → Parser → AST → Config    │
+├─────────────────────────────────────────────────────────┤
+│  LayoutEngine        — BSP tree + 8 layout visitors     │
+├─────────────────────────────────────────────────────────┤
+│  EWMHManager         — 50+ EWMH atoms + custom _PB_*    │
+├─────────────────────────────────────────────────────────┤
+│  MonitorManager      — XRandR multi-monitor support     │
+├─────────────────────────────────────────────────────────┤
+│  ExtensionLoader     — dlopen plugin system v2.0        │
+├─────────────────────────────────────────────────────────┤
+│  Toaster             — Cairo/D-Bus OSD notifications    │
+├─────────────────────────────────────────────────────────┤
+│  KeybindManager      — Key grabbing & action dispatch   │
+├─────────────────────────────────────────────────────────┤
+│  IPCServer           — Unix socket external control     │
+├─────────────────────────────────────────────────────────┤
+│  ScratchpadManager   — Hide/show window scratchpad      │
+└─────────────────────────────────────────────────────────┘
 ```
 
-### Conditional Rules
-
-```cpp
-// if statements with member access
-if (window.class == "Firefox") {
-    window_rules: { opacity: 1.0 };
-};
-
-if (window.title.contains(" - VS Code")) {
-    window_rules: { layout: "monocle" };
-};
-```
-
-### Error Recovery
-
-Parser uses **panic mode** recovery:
-
-```cpp
-void Parser::synchronize() {
-    while (!isAtEnd()) {
-        if (previous().type == TokenType::Semicolon) return;
-        if (peek().type == TokenType::RightBrace) return;
-        advance();
-    }
-}
-```
-
-All errors are collected and reported through the Toaster.
-
-## X11 Event Loop
-
-Modern C++ event handling:
-
-```cpp
-void WindowManager::run() {
-    XEvent event;
-    while (true) {
-        toaster_->update(); // Render notifications
-        
-        if (XPending(display_.get()) > 0) {
-            XNextEvent(display_.get(), &event);
-            
-            switch (event.type) {
-                case MapRequest:
-                    handleMapRequest(event.xmaprequest);
-                    break;
-                case KeyPress:
-                    handleKeyPress(event.xkey);
-                    break;
-                // ... other events
-            }
-        }
-    }
-}
-```
-
-## Keybind System
-
-### Registration
-
-```cpp
-keybind_manager_->registerKeybind("SUPER, Q", "killactive");
-keybind_manager_->registerKeybind("SUPER, RETURN", "exec: alacritty");
-```
-
-### Key Grabbing
-
-```cpp
-void KeybindManager::grabKeys(Display* display, Window root) {
-    for (const auto& bind : keybinds_) {
-        KeyCode keycode = XKeysymToKeycode(display, bind.keysym);
-        XGrabKey(display, keycode, bind.modifiers, root, True,
-                GrabModeAsync, GrabModeAsync);
-    }
-}
-```
-
-## Performance Optimizations
-
-Pointblank is optimized for maximum execution speed targeting nanosecond-level improvements:
-
-### String Operations
-- Uses `std::string_view` for zero-copy string comparisons in parser
-- `reserve()` pre-allocations for vectors to avoid heap reallocations
-- `emplace_back()` instead of `push_back()` for in-place construction
-
-### Hot Path Inlining
-- Critical lexer functions: `peek()`, `advance()`, `match()`, `isAtEnd()`
-- Parser functions: `previous()`, `check()`, `advance()`
-- BSPNode query methods: `isLeaf()`, `getWindow()`, `getLeft()`, `getRight()`
-- Rect geometry methods: `area()`, `contains()`, `centerX()`, `centerY()`
-
-### Memory Optimizations
-- `clients_.reserve()` pre-allocation for window map
-- Atom caching in EWMHManager to avoid repeated lookups
-- Lock-free data structures for multi-threaded extensions
-
-### Event Processing
-- Non-blocking event loop with minimal sleep (1ms) when idle
-- Direct XEvent processing without intermediate buffering
-- Toaster updates only when notifications are present
-
-### Performance Metrics
-- Frame timing optimized for 60Hz+ displays
-- Input latency reduction through inline key handling
-- Window placement calculation speedup via pre-sized containers
-
-## File Organization
+### File Layout
 
 ```
 Pointblank/
 ├── src/
-│   ├── config/       (ConfigParser, ConfigWatcher, LayoutConfigParser)
-│   ├── core/         (WindowManager, SessionManager, Toaster)
-│   ├── display/      (EWMHManager, MonitorManager, SyncManager)
-│   ├── extensions/   (ExtensionLoader, PluginManager)
-│   ├── layout/       (LayoutEngine, LayoutProvider)
-│   ├── performance/  (PerformanceTuner, RenderPipeline)
-│   ├── utils/        (GapConfig, SpatialGrid, Camera)
-│   └── window/       (KeybindManager, FloatingWindowManager, etc.)
-├── include/
-│   └── pointblank/   (Header-only utilities)
-└── text/             (Documentation)
+│   ├── core/           # WindowManager, SessionManager, Toaster
+│   ├── config/         # ConfigParser, ConfigWatcher, StartupApps
+│   ├── layout/         # LayoutEngine, LayoutProvider
+│   ├── display/        # EWMHManager, MonitorManager, SyncManager
+│   ├── window/         # KeybindManager, FloatingWindowManager, Scratchpad
+│   ├── ipc/            # IPCServer
+│   ├── performance/    # PerformanceTuner, RenderPipeline, LockFreeStructures
+│   └── utils/          # GapConfig, SpatialGrid, Camera
+├── include/pointblank/ # Public headers
+├── extension_template/ # Example extension to copy from
+├── contrib/            # .desktop file, xinitrc example
+├── text/               # Documentation
+└── CMakeLists.txt
 ```
 
-## File Organization
-
-```
-pointblank/
-├── GRAMMAR.md            # DSL specification
-├── DOCUMENTATION.md      # Developer documentation
-├── extensions.md         # Extension system guide
-├── ARCHITECTURE_SUMMARY.md
-│── README.md             # This file
-├── src/
-│   ├── config/           # ConfigParser, ConfigWatcher, LayoutConfigParser
-│   ├── core/             # WindowManager, SessionManager, Toaster
-│   ├── display/          # EWMHManager, MonitorManager, SyncManager
-│   ├── extensions/       # ExtensionLoader, PluginManager
-│   ├── layout/           # LayoutEngine, LayoutProvider
-│   ├── performance/      # PerformanceTuner, RenderPipeline
-│   ├── utils/            # GapConfig, SpatialGrid, Camera
-│   └── window/           # KeybindManager, FloatingWindowManager, etc.
-├── include/pointblank/   # Public headers
-├── extension_template/   # Example extension template
-├── contrib/              # Desktop entry, xinitrc
-└── CMakeLists.txt        # Build configuration
-```
-
-## Documentation
-
-- [GRAMMAR.md](GRAMMAR.md) - Complete DSL specification
-- [DOCUMENTATION.md](DOCUMENTATION.md) - Developer documentation for layouts and extensions
-- [extensions.md](extensions.md) - Extension system guide and API reference
-- [ARCHITECTURE_SUMMARY.md](ARCHITECTURE_SUMMARY.md) - System architecture details
+---
 
 ## Contributing
 
-Key areas for extension:
+### Writing Extensions
 
-1. **New Layout Modes**: Implement `LayoutVisitor` interface
-2. **Extensions**: Create custom extensions using the v2.0 API (see [extensions.md](extensions.md))
-3. **Window Rules**: Extend conditional matching system
-4. **Animation System**: Integrate with layout transitions
+1. Copy `extension_template/` as a starting point
+2. Implement the hooks you need
+3. Compile to a `.so`
+4. Drop it in `~/.config/pblank/extensions/user/`
+5. Add `#import yourextension` to your config
+
+### Contributing Core Changes
+
+1. Read the code (good luck! it's dense but it's clean)
+2. Test your changes (non-negotiable)
+3. Submit a PR
+4. Wait for the One Maniac™ to review
+
+**Style**: Modern C++20, RAII everywhere, no raw owning pointers, no exceptions in hot paths.
+
+### Contributing Extensions to the Official Set
+
+Submit to the Point:project extension repository. Extensions go through ABI review before they're bundled.
+
+---
+
+## FAQ
+
+### Why not Hyprland/i3/bspwm?
+
+Hyprland is Wayland. i3 and bspwm are great but sit at 15–45x Point:Blank's memory usage with fewer layout options. Also, writing your own is character development at its peak, ngl.
+
+### Why X11 and not Wayland?
+
+Later lah boss, wait yeah. wait for AkibaraWM
+
+### Does it work on [insert distro here]?
+
+If it has X11 and a C++20 compiler, probably. Tested on Arch Linux. Everything else is "should work".
+
+### What's the minimum hardware?
+
+Tested on a Lenovo 500e Chromebook (a machine that has no business running a custom WM). If it runs there, it runs anywhere (*including your Samsung smart frid-*).
+
+### Is it stable?
+
+Define stable. The core event loop and EWMH are solid. Some features are still being wired together. Check the current release notes (non-existence).
+
+### Why a custom DSL and not TOML/JSON/YAML?
+
+Because `"SUPER, Q": "killactive"` is more readable than any of those for keybinds. Because `if (window.class == "Firefox")` is how humans think. Because we could.
+
+### Who maintains this?
+
+One Maniac. Send help. Or coffee. Or bug reports, those are also useful.
+
+---
+
+## Documentation
+
+|File|What's in it|
+|---|---|
+|GRAMMAR.md|Complete DSL specification with EBNF grammar|
+|DOCUMENTATION.md|Developer docs — layouts, internals, extending|
+|extensions.md|Extension API reference and examples|
+|ARCHITECTURE_SUMMARY.md|System architecture deep-dive|
+|EXTERNAL_BAR_INTEGRATION.md|Polybar/lemonbar/yambar config examples|
+
+---
+
+## Credits
+
+- **Created by**: N3ZT POSSIBLE G3N x Point:project
+- **Inspired by**: i3, bspwm, dwm, and pure spite
+- **Tested on**: Hardware that most people forgot existed
+- **Special thanks**: Anyone who filed a bug instead of just silently giving up (no one)
+
+---
 
 ## License
 
+MIT — see LICENSE file.
 
-MIT License - See LICENSE file for details.
+---
 
-## Acknowledgments
+## Final Notes
 
-- Inspired by i3, bspwm, and dwm
-- Uses QML-style syntax for configuration
-- Built with modern C++20 best practices
+> _"If there's a limit, we break through it._  
+> _If there's no limit, we become the limit._  
+> _Repeat until it fails."_  
+> — N3ZT POSSIBLE G3N
+
+Point:Blank is still evolving. The philosophy is based, the implementation is transparent, and the memory usage is genuinely embarrassingly small. If you made it this far, you're either building a WM or very bored. Either way happy using Point:Blank!!
+
+---
+
+**Last updated**: 19th February 2026 (1500 GMT+8)  
+**Documentation version**: 2.0  
+**Sanity level**: Questionable but functional

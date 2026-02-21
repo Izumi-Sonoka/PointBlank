@@ -7,7 +7,10 @@
 3. [Extension Development](#extension-development)
 4. [Configuration System](#configuration-system)
 5. [Hot-Reload System](#hot-reload-system)
-6. [API Reference](#api-reference)
+6. [Scratchpad System](#scratchpad-system)
+7. [Window Swallowing](#window-swallowing)
+8. [IPC Control](#ipc-control)
+9. [API Reference](#api-reference)
 
 ---
 
@@ -528,6 +531,70 @@ struct WindowStats {
 
 ---
 
+## Bug Analysis & Known Issues
+
+This section documents known issues, edge cases, and their mitigations.
+
+### Fixes Applied
+
+#### IPC Partial Write Fix
+**Issue**: Socket writes could fail silently.
+**Solution**: Loop until all data is sent.
+
+#### Client Limit
+**Issue**: Unbounded connections could exhaust resources.
+**Solution**: `MAX_IPC_CLIENTS = 32` limit.
+
+#### Floating Window Bounds
+**Issue**: Unbounded floating window list.
+**Solution**: `MAX_FLOATING_WINDOWS = 256` with LRU eviction.
+
+### Edge Cases
+
+| Scenario | Risk Level | Mitigation |
+|----------|------------|------------|
+| Rapid config reload | Low | Debouncing (300ms) |
+| Monitor disconnect | Medium | Fallback to primary |
+| Extension hang | Medium | Health monitoring |
+| X11 error | Low | Custom error handler |
+
+### Security
+
+- IPC socket uses mode 0600
+- Extension ABI validated via checksum
+- Config files should not be world-writable
+
+---
+
+## Competitive Analysis
+
+### Market Position
+
+Pointblank differentiates through:
+1. **DSL Configuration**: Unique `.wmi` syntax
+2. **Crash-Proof**: Visual error reporting
+3. **8 Layout Modes**: More than any competitor
+4. **Extension v2.0**: ABI-stable plugin system
+
+### Feature Comparison
+
+| Feature | i3 | bspwm | dwm | Pointblank |
+|---------|----|----|------|------------|
+| DSL Config | ❌ | ❌ | ❌ | ✅ |
+| 8+ Layouts | ❌ | ❌ | ❌ | ✅ |
+| Extension API | ❌ | ❌ | ❌ | ✅ |
+| Visual Errors | ❌ | ❌ | ❌ | ✅ |
+| Hot Reload | ✅ | ❌ | ❌ | ✅ |
+
+### Recommendations
+
+1. **Add session saving** - P2 priority
+2. **Improve documentation** - Critical for adoption
+3. **Add tests** - CI/CD pipeline
+4. **Package for distros** - AUR, deb, rpm
+
+---
+
 ## Building and Installation
 
 ### Requirements
@@ -557,6 +624,115 @@ sudo make install
 cmake -DCMAKE_BUILD_TYPE=Debug -DENABLE_TESTS=ON ..
 make
 ctest
+```
+
+---
+
+## Scratchpad System
+
+The ScratchpadManager provides a hidden workspace for windows that need to be quickly shown/hidden:
+
+### Usage
+
+```wmi
+// In configuration
+binds: {
+    "SUPER, S": "scratchpad toggle"    // Toggle scratchpad window
+    "SUPER, SHIFT, S": "scratchpad add"  // Add focused window to scratchpad
+}
+```
+
+### API Reference
+
+| Method | Description |
+|--------|-------------|
+| `addToScratchpad(Window)` | Add window to scratchpad |
+| `toggleScratchpad()` | Show/hide scratchpad window |
+| `removeFromScratchpad(Window)` | Remove window from scratchpad |
+| `getScratchpadWindow()` | Get current scratchpad window |
+
+### Implementation Details
+
+- Scratchpad windows are hidden from all workspaces
+- Only one scratchpad window can be visible at a time
+- Windows retain their original geometry when toggled
+
+---
+
+## Window Swallowing
+
+The WindowSwallower allows terminal windows to "swallow" GUI applications launched from them:
+
+### How It Works
+
+1. Terminal window spawns child process
+2. Child process creates GUI window
+3. WindowSwallower detects parent-child relationship
+4. Terminal window is hidden (swallowed)
+5. When GUI closes, terminal is restored
+
+### Configuration
+
+```wmi
+swallow: {
+    enabled: true
+    terminal_class: "Alacritty"  // Terminal WM_CLASS to swallow
+    keep_term_focus: false       // Return focus to terminal on unswallow
+}
+``### Supported Terminals
+
+- Alacritty
+- Kitty
+- URxvt
+- St
+- XTerm
+
+---
+
+## IPC Control
+
+The IPCServer provides external control via Unix domain socket:
+
+### Socket Location
+
+```
+/tmp/pointblank-<uid>.sock
+```
+
+### Protocol
+
+JSON-based request/response:
+
+```json
+// Request
+{"command": "workspace", "args": [2]}
+
+// Response
+{"success": true, "result": "Switched to workspace 2"}
+```
+
+### Available Commands
+
+| Command | Args | Description |
+|---------|------|-------------|
+| `workspace` | `[n]` | Switch to workspace n |
+| `move_to_workspace` | `[n]` | Move focused window to workspace n |
+| `focus` | `["left"\|"right"\|"up"\|"down"]` | Move focus |
+| `reload` | `[]` | Reload configuration |
+| `exec` | `["cmd"]` | Execute shell command |
+| `layout` | `["bsp"\|"monocle"\|...]` | Change layout |
+| `scratchpad` | `["toggle"]` | Toggle scratchpad |
+| `list_windows` | `[]` | List all managed windows |
+| `get_focused` | `[]` | Get focused window info |
+
+### Example Usage
+
+```bash
+# Switch to workspace 3
+echo '{"command": "workspace", "args": [3]}' | socat - UNIX-CONNECT:/tmp/pointblank-1000.sock
+
+# Reload config
+echo '{"command": "reload", "args": []}' | socat - UNIX-CONNECT:/tmp/pointblank-1000.sock
 ```
 
 ---

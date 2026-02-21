@@ -33,11 +33,11 @@ bool SizeConstraints::readHints(Window window) {
     long supplied_return = 0;
     WindowSizeHints& cached = hints_cache_[window];
     
-    // Initialize with defaults
+    
     cached = WindowSizeHints{};
     
     if (XGetWMNormalHints(display_, window, hints, &supplied_return)) {
-        // Parse flags
+        
         if (supplied_return & USPosition) {
             cached.flags.user_position = true;
         }
@@ -107,7 +107,7 @@ ConstraintResult SizeConstraints::applyConstraints(Window window,
     result.width = width;
     result.height = height;
     
-    // Apply X11 hard limits first
+    
     auto [clamped_w, clamped_h] = clampToX11Limits(width, height);
     if (clamped_w != width || clamped_h != height) {
         result.hit_x11_limit = true;
@@ -116,7 +116,7 @@ ConstraintResult SizeConstraints::applyConstraints(Window window,
         result.height = clamped_h;
     }
     
-    // Apply global constraints
+    
     if (result.width < global_min_width_) {
         result.width = global_min_width_;
         result.hit_min_limit = true;
@@ -138,10 +138,10 @@ ConstraintResult SizeConstraints::applyConstraints(Window window,
         result.was_constrained = true;
     }
     
-    // Apply window-specific hints
+    
     auto hints = getHints(window);
     if (hints) {
-        // Apply min size
+        
         if (hints->flags.min_size) {
             if (result.width < hints->min_width) {
                 result.width = hints->min_width;
@@ -155,7 +155,7 @@ ConstraintResult SizeConstraints::applyConstraints(Window window,
             }
         }
         
-        // Apply max size
+        
         if (hints->flags.max_size) {
             if (result.width > hints->max_width) {
                 result.width = hints->max_width;
@@ -169,7 +169,7 @@ ConstraintResult SizeConstraints::applyConstraints(Window window,
             }
         }
         
-        // Apply resize increment
+        
         if (hints->flags.resize_inc) {
             auto [inc_w, inc_h] = applyResizeIncrement(*hints, 
                                                        result.width, result.height);
@@ -180,7 +180,7 @@ ConstraintResult SizeConstraints::applyConstraints(Window window,
             }
         }
         
-        // Apply aspect ratio
+        
         if (hints->flags.aspect) {
             auto [aspect_w, aspect_h] = applyAspectRatio(*hints,
                                                        result.width, result.height);
@@ -192,7 +192,7 @@ ConstraintResult SizeConstraints::applyConstraints(Window window,
         }
     }
     
-    // Final X11 limit check
+    
     std::tie(result.width, result.height) = clampToX11Limits(result.width, result.height);
     
     return result;
@@ -211,13 +211,13 @@ SizeConstraints::PositionResult SizeConstraints::applyConstraintsWithGravity(
     result.height = height;
     result.was_constrained = false;
     
-    // Apply size constraints
+    
     ConstraintResult size_result = applyConstraints(window, width, height);
     result.width = size_result.width;
     result.height = size_result.height;
     result.was_constrained = size_result.was_constrained;
     
-    // Calculate position adjustment based on gravity
+    
     auto hints = getHints(window);
     int gravity = NorthWestGravity;
     
@@ -225,63 +225,63 @@ SizeConstraints::PositionResult SizeConstraints::applyConstraintsWithGravity(
         gravity = hints->win_gravity;
     }
     
-    // Calculate delta from size change
+    
     int delta_w = result.width - old_width;
     int delta_h = result.height - old_height;
     
-    // Apply gravity
+    
     switch (gravity) {
         case NorthWestGravity:
-            // Top-left stays fixed (default)
+            
             break;
             
         case NorthGravity:
-            // Top-center stays fixed
+            
             result.x -= delta_w / 2;
             break;
             
         case NorthEastGravity:
-            // Top-right stays fixed
+            
             result.x -= delta_w;
             break;
             
         case WestGravity:
-            // Middle-left stays fixed
+            
             result.y -= delta_h / 2;
             break;
             
         case CenterGravity:
-            // Center stays fixed
+            
             result.x -= delta_w / 2;
             result.y -= delta_h / 2;
             break;
             
         case EastGravity:
-            // Middle-right stays fixed
+            
             result.x -= delta_w;
             result.y -= delta_h / 2;
             break;
             
         case SouthWestGravity:
-            // Bottom-left stays fixed
+            
             result.y -= delta_h;
             break;
             
         case SouthGravity:
-            // Bottom-center stays fixed
+            
             result.x -= delta_w / 2;
             result.y -= delta_h;
             break;
             
         case SouthEastGravity:
-            // Bottom-right stays fixed
+            
             result.x -= delta_w;
             result.y -= delta_h;
             break;
             
         case StaticGravity:
-            // Window content stays fixed relative to parent
-            // This requires knowing the border width, assume 0 for now
+            
+            
             break;
             
         default:
@@ -323,11 +323,11 @@ std::pair<int, int> SizeConstraints::applyResizeIncrement(
     int base_w = hints.flags.base_size ? hints.base_width : 0;
     int base_h = hints.flags.base_size ? hints.base_height : 0;
     
-    // Calculate cell count
+    
     int cells_w = (width - base_w) / hints.width_inc;
     int cells_h = (height - base_h) / hints.height_inc;
     
-    // Snap to grid
+    
     return {
         base_w + cells_w * hints.width_inc,
         base_h + cells_h * hints.height_inc
@@ -342,19 +342,19 @@ std::pair<int, int> SizeConstraints::applyAspectRatio(
         return {width, height};
     }
     
-    // Calculate current aspect ratio
+    
     double aspect = static_cast<double>(width) / static_cast<double>(height);
     
-    // Calculate min and max aspect ratios
+    
     double min_aspect = hints.min_aspect_x / hints.min_aspect_y;
     double max_aspect = hints.max_aspect_x / hints.max_aspect_y;
     
-    // Clamp aspect ratio
+    
     if (aspect < min_aspect) {
-        // Too tall, increase width
+        
         width = static_cast<int>(height * min_aspect);
     } else if (aspect > max_aspect) {
-        // Too wide, increase height
+        
         height = static_cast<int>(width / max_aspect);
     }
     
@@ -406,4 +406,4 @@ std::pair<int, int> SizeConstraints::getGlobalMaxSize() const {
     return {global_max_width_, global_max_height_};
 }
 
-} // namespace pblank
+} 

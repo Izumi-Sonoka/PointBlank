@@ -512,6 +512,55 @@ See [`extension_template/ExampleExtension.cpp`](/extension_template/ExampleExten
 
 ---
 
+## Extension Bug Analysis
+
+### Known Issues
+
+| Issue | Severity | Fix |
+|-------|----------|-----|
+| Extension crash causes freeze | Medium | Health monitoring + timeout |
+| ABI mismatch | Low | Version checksum validation |
+| Memory leak in extension | Medium | Track memory usage |
+| Deadlock in event hook | Medium | Timeout on hook execution |
+
+### Best Practices for Stability
+
+1. **Always return quickly**: Don't block in event handlers
+2. **Use timeouts**: Set max execution time for hooks
+3. **Handle errors**: Return proper Result codes
+4. **Clean up resources**: Implement shutdown() properly
+
+---
+
+## Extension Competitive Analysis
+
+### Market Position
+
+Pointblank's extension system is unique among X11 window managers:
+
+| Feature | i3 | bspwm | dwm | awesome | Pointblank |
+|---------|----|----|------|---------|------------|
+| Plugin System | ❌ | ❌ | Patches | ❌ | ✅ |
+| ABI Stability | N/A | N/A | N/A | N/A | ✅ |
+| Health Monitoring | N/A | N/A | N/A | N/A | ✅ |
+| Custom Layouts | ❌ | ❌ | ❌ | Widgets | ✅ |
+
+### Extension API Advantages
+
+1. **ABI Stability**: Version checksums prevent crashes
+2. **Health Monitoring**: Detect hung extensions
+3. **Multiple Capabilities**: Layout, Event, Renderer, etc.
+4. **Priority System**: Control execution order
+
+### Recommendations for Extension Ecosystem
+
+1. Create official extension repository
+2. Add more built-in extensions (animations, blur)
+3. Document extension API better
+4. Add extension marketplace/website
+
+---
+
 ## Troubleshooting
 
 ### Extension Not Loading

@@ -15,9 +15,9 @@
 namespace pblank {
 namespace ewmh {
 
-// ============================================================================
-// Constructor / Destructor
-// ============================================================================
+
+
+
 
 EWMHManager::EWMHManager(Display* display, Window root)
     : display_(display)
@@ -36,24 +36,24 @@ EWMHManager::~EWMHManager() {
     }
 }
 
-// ============================================================================
-// Initialization
-// ============================================================================
+
+
+
 
 bool EWMHManager::initialize(const char* wm_name) {
-    // Create the WM_CHECK window first
+    
     createWMCheckWindow(wm_name);
     
-    // Set the supported hints
+    
     setSupportedHints();
     
-    // Set initial desktop count
+    
     setNumberOfDesktops(num_desktops_);
     
-    // Set initial current desktop
+    
     setCurrentDesktop(0);
     
-    // Set desktop geometry
+    
     int screen = DefaultScreen(display_);
     unsigned long geometry[2] = {
         static_cast<unsigned long>(DisplayWidth(display_, screen)),
@@ -63,13 +63,13 @@ bool EWMHManager::initialize(const char* wm_name) {
                    XA_CARDINAL, 32, PropModeReplace,
                    reinterpret_cast<unsigned char*>(geometry), 2);
     
-    // Set initial viewport (0, 0)
+    
     unsigned long viewport[2] = {0, 0};
     XChangeProperty(display_, root_, atoms_.NET_DESKTOP_VIEWPORT,
                    XA_CARDINAL, 32, PropModeReplace,
                    reinterpret_cast<unsigned char*>(viewport), 2);
     
-    // Set showing desktop to false
+    
     setShowingDesktop(false);
     
     std::cout << "[EWMH] Initialized with WM name: " << wm_name << std::endl;
@@ -77,7 +77,7 @@ bool EWMHManager::initialize(const char* wm_name) {
 }
 
 void EWMHManager::initAtoms() {
-    // Root window properties
+    
     atoms_.NET_SUPPORTED = XInternAtom(display_, "_NET_SUPPORTED", False);
     atoms_.NET_SUPPORTING_WM_CHECK = XInternAtom(display_, "_NET_SUPPORTING_WM_CHECK", False);
     atoms_.NET_NUMBER_OF_DESKTOPS = XInternAtom(display_, "_NET_NUMBER_OF_DESKTOPS", False);
@@ -91,7 +91,7 @@ void EWMHManager::initAtoms() {
     atoms_.NET_CLIENT_LIST_STACKING = XInternAtom(display_, "_NET_CLIENT_LIST_STACKING", False);
     atoms_.NET_SHOWING_DESKTOP = XInternAtom(display_, "_NET_SHOWING_DESKTOP", False);
     
-    // Window properties
+    
     atoms_.NET_WM_NAME = XInternAtom(display_, "_NET_WM_NAME", False);
     atoms_.NET_WM_VISIBLE_NAME = XInternAtom(display_, "_NET_WM_VISIBLE_NAME", False);
     atoms_.NET_WM_ICON_NAME = XInternAtom(display_, "_NET_WM_ICON_NAME", False);
@@ -110,7 +110,7 @@ void EWMHManager::initAtoms() {
     atoms_.NET_WM_OPAQUE_REGION = XInternAtom(display_, "_NET_WM_OPAQUE_REGION", False);
     atoms_.NET_WM_BYPASS_COMPOSITOR = XInternAtom(display_, "_NET_WM_BYPASS_COMPOSITOR", False);
     
-    // Window types
+    
     atoms_.NET_WM_WINDOW_TYPE_NORMAL = XInternAtom(display_, "_NET_WM_WINDOW_TYPE_NORMAL", False);
     atoms_.NET_WM_WINDOW_TYPE_DIALOG = XInternAtom(display_, "_NET_WM_WINDOW_TYPE_DIALOG", False);
     atoms_.NET_WM_WINDOW_TYPE_UTILITY = XInternAtom(display_, "_NET_WM_WINDOW_TYPE_UTILITY", False);
@@ -124,7 +124,7 @@ void EWMHManager::initAtoms() {
     atoms_.NET_WM_WINDOW_TYPE_DOCK = XInternAtom(display_, "_NET_WM_WINDOW_TYPE_DOCK", False);
     atoms_.NET_WM_WINDOW_TYPE_DESKTOP = XInternAtom(display_, "_NET_WM_WINDOW_TYPE_DESKTOP", False);
     
-    // Window states
+    
     atoms_.NET_WM_STATE_MODAL = XInternAtom(display_, "_NET_WM_STATE_MODAL", False);
     atoms_.NET_WM_STATE_STICKY = XInternAtom(display_, "_NET_WM_STATE_STICKY", False);
     atoms_.NET_WM_STATE_MAXIMIZED_VERT = XInternAtom(display_, "_NET_WM_STATE_MAXIMIZED_VERT", False);
@@ -139,7 +139,7 @@ void EWMHManager::initAtoms() {
     atoms_.NET_WM_STATE_DEMANDS_ATTENTION = XInternAtom(display_, "_NET_WM_STATE_DEMANDS_ATTENTION", False);
     atoms_.NET_WM_STATE_FOCUSED = XInternAtom(display_, "_NET_WM_STATE_FOCUSED", False);
     
-    // Window actions
+    
     atoms_.NET_WM_ACTION_MOVE = XInternAtom(display_, "_NET_WM_ACTION_MOVE", False);
     atoms_.NET_WM_ACTION_RESIZE = XInternAtom(display_, "_NET_WM_ACTION_RESIZE", False);
     atoms_.NET_WM_ACTION_MINIMIZE = XInternAtom(display_, "_NET_WM_ACTION_MINIMIZE", False);
@@ -153,21 +153,22 @@ void EWMHManager::initAtoms() {
     atoms_.NET_WM_ACTION_ABOVE = XInternAtom(display_, "_NET_WM_ACTION_ABOVE", False);
     atoms_.NET_WM_ACTION_BELOW = XInternAtom(display_, "_NET_WM_ACTION_BELOW", False);
     
-    // Client messages
+    
     atoms_.NET_CLOSE_WINDOW = XInternAtom(display_, "_NET_CLOSE_WINDOW", False);
     atoms_.NET_MOVERESIZE_WINDOW = XInternAtom(display_, "_NET_MOVERESIZE_WINDOW", False);
     atoms_.NET_WM_MOVERESIZE = XInternAtom(display_, "_NET_WM_MOVERESIZE", False);
     atoms_.NET_RESTACK_WINDOW = XInternAtom(display_, "_NET_RESTACK_WINDOW", False);
     atoms_.NET_REQUEST_FRAME_EXTENTS = XInternAtom(display_, "_NET_REQUEST_FRAME_EXTENTS", False);
+    atoms_.NET_WM_FULLSCREEN_MONITORS = XInternAtom(display_, "_NET_WM_FULLSCREEN_MONITORS", False);
     
-    // Utility atoms
+    
     atoms_.UTF8_STRING = XInternAtom(display_, "UTF8_STRING", False);
     atoms_.WM_PROTOCOLS = XInternAtom(display_, "WM_PROTOCOLS", False);
     atoms_.WM_DELETE_WINDOW = XInternAtom(display_, "WM_DELETE_WINDOW", False);
     atoms_.WM_STATE = XInternAtom(display_, "WM_STATE", False);
     atoms_.WM_TAKE_FOCUS = XInternAtom(display_, "WM_TAKE_FOCUS", False);
     
-    // Custom Pointblank atoms for external status bar support
+    
     atoms_.PB_CURRENT_WORKSPACE = XInternAtom(display_, "_PB_CURRENT_WORKSPACE", False);
     atoms_.PB_WORKSPACE_NAMES = XInternAtom(display_, "_PB_WORKSPACE_NAMES", False);
     atoms_.PB_OCCUPIED_WORKSPACES = XInternAtom(display_, "_PB_OCCUPIED_WORKSPACES", False);
@@ -178,7 +179,7 @@ void EWMHManager::initAtoms() {
 }
 
 void EWMHManager::createWMCheckWindow(const char* wm_name) {
-    // Create a simple unmapped window for WM identification
+    
     XSetWindowAttributes attrs;
     attrs.override_redirect = True;
     attrs.event_mask = 0;
@@ -186,38 +187,38 @@ void EWMHManager::createWMCheckWindow(const char* wm_name) {
     wm_check_window_ = XCreateWindow(
         display_,
         root_,
-        -1, -1, 1, 1,  // Position and size (off-screen, 1x1)
-        0,             // Border width
-        CopyFromParent, // Depth
-        InputOnly,     // Class
-        CopyFromParent, // Visual
+        -1, -1, 1, 1,  
+        0,             
+        CopyFromParent, 
+        InputOnly,     
+        CopyFromParent, 
         CWOverrideRedirect | CWEventMask,
         &attrs
     );
     
-    // Set the WM name on the check window
+    
     XChangeProperty(display_, wm_check_window_, atoms_.NET_WM_NAME,
                    atoms_.UTF8_STRING, 8, PropModeReplace,
                    reinterpret_cast<const unsigned char*>(wm_name),
                    static_cast<int>(strlen(wm_name)));
     
-    // Set _NET_SUPPORTING_WM_CHECK on the check window pointing to itself
+    
     XChangeProperty(display_, wm_check_window_, atoms_.NET_SUPPORTING_WM_CHECK,
                    XA_WINDOW, 32, PropModeReplace,
                    reinterpret_cast<unsigned char*>(&wm_check_window_), 1);
     
-    // Set _NET_SUPPORTING_WM_CHECK on the root window pointing to check window
+    
     XChangeProperty(display_, root_, atoms_.NET_SUPPORTING_WM_CHECK,
                    XA_WINDOW, 32, PropModeReplace,
                    reinterpret_cast<unsigned char*>(&wm_check_window_), 1);
 }
 
 void EWMHManager::setSupportedHints() {
-    // List of all EWMH hints we support
-    std::vector<Atom> supported;
-    supported.reserve(64);  // Pre-allocate for all known hints
     
-    // Root window properties
+    std::vector<Atom> supported;
+    supported.reserve(64);  
+    
+    
     supported.push_back(atoms_.NET_SUPPORTED);
     supported.push_back(atoms_.NET_SUPPORTING_WM_CHECK);
     supported.push_back(atoms_.NET_NUMBER_OF_DESKTOPS);
@@ -231,7 +232,7 @@ void EWMHManager::setSupportedHints() {
     supported.push_back(atoms_.NET_CLIENT_LIST_STACKING);
     supported.push_back(atoms_.NET_SHOWING_DESKTOP);
     
-    // Window properties
+    
     supported.push_back(atoms_.NET_WM_NAME);
     supported.push_back(atoms_.NET_WM_DESKTOP);
     supported.push_back(atoms_.NET_WM_WINDOW_TYPE);
@@ -241,7 +242,7 @@ void EWMHManager::setSupportedHints() {
     supported.push_back(atoms_.NET_WM_STRUT_PARTIAL);
     supported.push_back(atoms_.NET_WM_PID);
     
-    // Window types we understand
+    
     supported.push_back(atoms_.NET_WM_WINDOW_TYPE_NORMAL);
     supported.push_back(atoms_.NET_WM_WINDOW_TYPE_DIALOG);
     supported.push_back(atoms_.NET_WM_WINDOW_TYPE_UTILITY);
@@ -255,7 +256,7 @@ void EWMHManager::setSupportedHints() {
     supported.push_back(atoms_.NET_WM_WINDOW_TYPE_DOCK);
     supported.push_back(atoms_.NET_WM_WINDOW_TYPE_DESKTOP);
     
-    // Window states we support
+    
     supported.push_back(atoms_.NET_WM_STATE_FULLSCREEN);
     supported.push_back(atoms_.NET_WM_STATE_MAXIMIZED_VERT);
     supported.push_back(atoms_.NET_WM_STATE_MAXIMIZED_HORZ);
@@ -266,18 +267,20 @@ void EWMHManager::setSupportedHints() {
     supported.push_back(atoms_.NET_WM_STATE_DEMANDS_ATTENTION);
     supported.push_back(atoms_.NET_WM_STATE_FOCUSED);
     
-    // Actions we support
+    
     supported.push_back(atoms_.NET_WM_ACTION_MOVE);
     supported.push_back(atoms_.NET_WM_ACTION_RESIZE);
     supported.push_back(atoms_.NET_WM_ACTION_FULLSCREEN);
     supported.push_back(atoms_.NET_WM_ACTION_CLOSE);
     supported.push_back(atoms_.NET_WM_ACTION_CHANGE_DESKTOP);
     
-    // Client messages we handle
+    
     supported.push_back(atoms_.NET_CLOSE_WINDOW);
     supported.push_back(atoms_.NET_MOVERESIZE_WINDOW);
     supported.push_back(atoms_.NET_WM_MOVERESIZE);
     supported.push_back(atoms_.NET_RESTACK_WINDOW);
+    supported.push_back(atoms_.NET_REQUEST_FRAME_EXTENTS);
+    supported.push_back(atoms_.NET_WM_FULLSCREEN_MONITORS);
     
     XChangeProperty(display_, root_, atoms_.NET_SUPPORTED,
                    XA_ATOM, 32, PropModeReplace,
@@ -285,9 +288,9 @@ void EWMHManager::setSupportedHints() {
                    static_cast<int>(supported.size()));
 }
 
-// ============================================================================
-// Desktop Management
-// ============================================================================
+
+
+
 
 void EWMHManager::setNumberOfDesktops(int count) {
     num_desktops_ = count;
@@ -310,7 +313,7 @@ void EWMHManager::setCurrentDesktop(int index) {
 void EWMHManager::setDesktopNames(const std::vector<std::string>& names) {
     desktop_names_ = names;
     
-    // Build the null-separated string
+    
     std::string combined;
     for (size_t i = 0; i < names.size(); ++i) {
         combined += names[i];
@@ -326,15 +329,15 @@ void EWMHManager::setDesktopNames(const std::vector<std::string>& names) {
 void EWMHManager::updateWorkarea(int screen_width, int screen_height,
                                   unsigned long left, unsigned long right,
                                   unsigned long top, unsigned long bottom) {
-    // Build workarea array (x, y, width, height for each desktop)
+    
     std::vector<unsigned long> workarea;
     workarea.reserve(num_desktops_ * 4);
     
     for (int i = 0; i < num_desktops_; ++i) {
-        workarea.push_back(left);                              // x
-        workarea.push_back(top);                               // y
-        workarea.push_back(screen_width - left - right);       // width
-        workarea.push_back(screen_height - top - bottom);      // height
+        workarea.push_back(left);                              
+        workarea.push_back(top);                               
+        workarea.push_back(screen_width - left - right);       
+        workarea.push_back(screen_height - top - bottom);      
     }
     
     XChangeProperty(display_, root_, atoms_.NET_WORKAREA,
@@ -352,9 +355,9 @@ void EWMHManager::setShowingDesktop(bool showing) {
                    reinterpret_cast<unsigned char*>(&value), 1);
 }
 
-// ============================================================================
-// Window Management
-// ============================================================================
+
+
+
 
 void EWMHManager::setClientList(const std::vector<Window>& windows) {
     client_list_ = windows;
@@ -393,9 +396,9 @@ void EWMHManager::setActiveWindow(Window window) {
                    reinterpret_cast<unsigned char*>(&window), 1);
 }
 
-// ============================================================================
-// Per-Window Properties
-// ============================================================================
+
+
+
 
 void EWMHManager::setWindowDesktop(Window window, unsigned long desktop) {
     XChangeProperty(display_, window, atoms_.NET_WM_DESKTOP,
@@ -422,7 +425,7 @@ void EWMHManager::setWindowState(Window window, const std::vector<Atom>& states)
 void EWMHManager::addWindowState(Window window, Atom state) {
     auto states = getWindowState(window);
     
-    // Check if already present
+    
     if (std::find(states.begin(), states.end(), state) != states.end()) {
         return;
     }
@@ -508,65 +511,70 @@ std::string EWMHManager::getWindowTitle(Window window) {
     return getTextProperty(window, atoms_.NET_WM_NAME);
 }
 
-// ============================================================================
-// Client Message Handling
-// ============================================================================
+
+
+
 
 bool EWMHManager::handleClientMessage(const XClientMessageEvent& event) {
-    // _NET_CURRENT_DESKTOP - Switch desktop request
+    
     if (event.message_type == atoms_.NET_CURRENT_DESKTOP) {
         return handleCurrentDesktop(event);
     }
     
-    // _NET_ACTIVE_WINDOW - Activate window request
+    
     if (event.message_type == atoms_.NET_ACTIVE_WINDOW) {
         return handleActiveWindow(event);
     }
     
-    // _NET_CLOSE_WINDOW - Close window request
+    
     if (event.message_type == atoms_.NET_CLOSE_WINDOW) {
         return handleCloseWindow(event);
     }
     
-    // _NET_WM_DESKTOP - Move window to desktop
+    
     if (event.message_type == atoms_.NET_WM_DESKTOP) {
         return handleWmDesktop(event);
     }
     
-    // _NET_WM_STATE - Change window state
+    
     if (event.message_type == atoms_.NET_WM_STATE) {
         return handleWmState(event);
     }
     
-    // _NET_WM_MOVERESIZE - Interactive move/resize
+    
     if (event.message_type == atoms_.NET_WM_MOVERESIZE) {
         return handleWmMoveResize(event);
     }
     
-    // _NET_RESTACK_WINDOW - Restack window
+    
     if (event.message_type == atoms_.NET_RESTACK_WINDOW) {
         return handleRestackWindow(event);
     }
     
-    // _NET_SHOWING_DESKTOP - Toggle show desktop
+    
     if (event.message_type == atoms_.NET_SHOWING_DESKTOP) {
         bool show = event.data.l[0] != 0;
         setShowingDesktop(show);
         return true;
     }
     
-    return false;  // Not handled
+    
+    if (event.message_type == atoms_.NET_REQUEST_FRAME_EXTENTS) {
+        return handleRequestFrameExtents(event);
+    }
+    
+    return false;  
 }
 
 bool EWMHManager::handleCurrentDesktop(const XClientMessageEvent& event) {
     int desktop = static_cast<int>(event.data.l[0]);
     
-    // Validate desktop index
+    
     if (desktop < 0 || desktop >= num_desktops_) {
         return false;
     }
     
-    // Call the callback if registered
+    
     if (desktop_switch_callback_) {
         desktop_switch_callback_(desktop);
         return true;
@@ -577,10 +585,10 @@ bool EWMHManager::handleCurrentDesktop(const XClientMessageEvent& event) {
 
 bool EWMHManager::handleActiveWindow(const XClientMessageEvent& event) {
     Window window = event.window;
-    // event.data.l[0] contains the source indication
-    // 0 = unspecified, 1 = application, 2 = pager
     
-    // The window action callback should handle focus
+    
+    
+    
     if (window_action_callback_) {
         window_action_callback_(window, atoms_.NET_ACTIVE_WINDOW);
         return true;
@@ -592,7 +600,7 @@ bool EWMHManager::handleActiveWindow(const XClientMessageEvent& event) {
 bool EWMHManager::handleCloseWindow(const XClientMessageEvent& event) {
     Window window = event.window;
     
-    // Send WM_DELETE_WINDOW message
+    
     XEvent msg;
     memset(&msg, 0, sizeof(msg));
     msg.xclient.type = ClientMessage;
@@ -607,11 +615,28 @@ bool EWMHManager::handleCloseWindow(const XClientMessageEvent& event) {
     return true;
 }
 
+bool EWMHManager::handleRequestFrameExtents(const XClientMessageEvent& event) {
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    (void)event;  
+    return true;
+}
+
 bool EWMHManager::handleWmDesktop(const XClientMessageEvent& event) {
     Window window = event.window;
     unsigned long desktop = static_cast<unsigned long>(event.data.l[0]);
     
-    // Validate desktop (0xFFFFFFFF means sticky)
+    
     if (desktop != 0xFFFFFFFF && 
         static_cast<int>(desktop) >= num_desktops_) {
         return false;
@@ -632,14 +657,14 @@ bool EWMHManager::handleWmState(const XClientMessageEvent& event) {
     Atom state1 = static_cast<Atom>(event.data.l[1]);
     Atom state2 = static_cast<Atom>(event.data.l[2]);
     
-    // action: 0 = remove, 1 = add, 2 = toggle
+    
     auto processState = [this, window, action](Atom state) {
         if (state == 0) return;
         
         bool has_state = hasWindowState(window, state);
         
         switch (action) {
-            case 0:  // Remove
+            case 0:  
                 if (has_state) {
                     removeWindowState(window, state);
                     if (window_action_callback_) {
@@ -648,7 +673,7 @@ bool EWMHManager::handleWmState(const XClientMessageEvent& event) {
                 }
                 break;
                 
-            case 1:  // Add
+            case 1:  
                 if (!has_state) {
                     addWindowState(window, state);
                     if (window_action_callback_) {
@@ -657,7 +682,7 @@ bool EWMHManager::handleWmState(const XClientMessageEvent& event) {
                 }
                 break;
                 
-            case 2:  // Toggle
+            case 2:  
                 if (has_state) {
                     removeWindowState(window, state);
                 } else {
@@ -682,7 +707,7 @@ bool EWMHManager::handleWmMoveResize(const XClientMessageEvent& event) {
     int y_root = static_cast<int>(event.data.l[1]);
     int direction = static_cast<int>(event.data.l[2]);
     int button = static_cast<int>(event.data.l[3]);
-    // event.data.l[4] is source indication
+    
     
     if (window_move_callback_) {
         window_move_callback_(window, x_root, y_root, direction, button);
@@ -694,11 +719,11 @@ bool EWMHManager::handleWmMoveResize(const XClientMessageEvent& event) {
 
 bool EWMHManager::handleRestackWindow(const XClientMessageEvent& event) {
     Window window = event.window;
-    // event.data.l[0] is source indication
+    
     Window sibling = static_cast<Window>(event.data.l[1]);
     int detail = static_cast<int>(event.data.l[2]);
     
-    // Perform the restack
+    
     XWindowChanges changes;
     changes.sibling = sibling;
     changes.stack_mode = detail;
@@ -708,9 +733,9 @@ bool EWMHManager::handleRestackWindow(const XClientMessageEvent& event) {
     return true;
 }
 
-// ============================================================================
-// Callback Registration
-// ============================================================================
+
+
+
 
 void EWMHManager::setDesktopSwitchCallback(DesktopSwitchCallback callback) {
     desktop_switch_callback_ = std::move(callback);
@@ -724,9 +749,9 @@ void EWMHManager::setWindowMoveCallback(WindowMoveCallback callback) {
     window_move_callback_ = std::move(callback);
 }
 
-// ============================================================================
-// Utility Methods
-// ============================================================================
+
+
+
 
 bool EWMHManager::isFloatingType(WindowType type) {
     switch (type) {
@@ -751,9 +776,9 @@ bool EWMHManager::isTiledType(WindowType type) {
     return type == WindowType::Normal;
 }
 
-// ============================================================================
-// Private Helper Methods
-// ============================================================================
+
+
+
 
 std::string EWMHManager::getTextProperty(Window window, Atom property) {
     XTextProperty prop;
@@ -842,14 +867,14 @@ void EWMHManager::setAtomVectorProperty(Window window, Atom property,
                    static_cast<int>(values.size()));
 }
 
-// ============================================================================
-// Strut/Reserved Area Management
-// ============================================================================
+
+
+
 
 EWMHManager::StrutPartial EWMHManager::getStrutPartial(Window window) {
     StrutPartial strut;
     
-    // Try _NET_WM_STRUT_PARTIAL first (more detailed)
+    
     Atom actual_type;
     int actual_format;
     unsigned long nitems, bytes_after;
@@ -877,7 +902,7 @@ EWMHManager::StrutPartial EWMHManager::getStrutPartial(Window window) {
     
     if (prop) XFree(prop);
     
-    // Fallback to _NET_WM_STRUT (simple version)
+    
     if (XGetWindowProperty(display_, window, atoms_.NET_WM_STRUT, 0, 4, False,
                           XA_CARDINAL, &actual_type, &actual_format,
                           &nitems, &bytes_after, &prop) == Success && prop && nitems >= 4) {
@@ -897,24 +922,24 @@ EWMHManager::StrutPartial EWMHManager::getStrutPartial(Window window) {
 EWMHManager::StrutPartial EWMHManager::getCombinedStruts(int screen_width, int screen_height) {
     StrutPartial combined;
     
-    // Get struts from all registered dock windows
+    
     for (Window dock : dock_windows_) {
         StrutPartial strut = getStrutPartial(dock);
         
-        // Combine struts by taking the maximum in each direction
-        // Only consider struts that span the relevant screen area
         
-        // Left strut: take maximum if it spans the screen height
+        
+        
+        
         if (strut.left > 0) {
             if (strut.left_start_y == 0 && strut.left_end_y >= static_cast<unsigned long>(screen_height - 1)) {
                 combined.left = std::max(combined.left, strut.left);
             } else if (strut.left_start_y == 0 && strut.left_end_y == 0) {
-                // Simple strut without partial info
+                
                 combined.left = std::max(combined.left, strut.left);
             }
         }
         
-        // Right strut: take maximum if it spans the screen height
+        
         if (strut.right > 0) {
             if (strut.right_start_y == 0 && strut.right_end_y >= static_cast<unsigned long>(screen_height - 1)) {
                 combined.right = std::max(combined.right, strut.right);
@@ -923,17 +948,17 @@ EWMHManager::StrutPartial EWMHManager::getCombinedStruts(int screen_width, int s
             }
         }
         
-        // Top strut: take maximum if it spans the screen width
+        
         if (strut.top > 0) {
             if (strut.top_start_x == 0 && strut.top_end_x >= static_cast<unsigned long>(screen_width - 1)) {
                 combined.top = std::max(combined.top, strut.top);
             } else if (strut.top_start_x == 0 && strut.top_end_x == 0) {
-                // Simple strut without partial info
+                
                 combined.top = std::max(combined.top, strut.top);
             }
         }
         
-        // Bottom strut: take maximum if it spans the screen width
+        
         if (strut.bottom > 0) {
             if (strut.bottom_start_x == 0 && strut.bottom_end_x >= static_cast<unsigned long>(screen_width - 1)) {
                 combined.bottom = std::max(combined.bottom, strut.bottom);
@@ -952,7 +977,7 @@ EWMHManager::StrutPartial EWMHManager::getCombinedStruts(int screen_width, int s
 }
 
 void EWMHManager::registerDockWindow(Window window) {
-    // Check if already registered
+    
     if (std::find(dock_windows_.begin(), dock_windows_.end(), window) != dock_windows_.end()) {
         return;
     }
@@ -969,9 +994,9 @@ void EWMHManager::unregisterDockWindow(Window window) {
     }
 }
 
-// ============================================================================
-// External Status Bar Support (Custom Pointblank Properties)
-// ============================================================================
+
+
+
 
 void EWMHManager::setCurrentWorkspacePB(int workspace) {
     XChangeProperty(display_, root_, atoms_.PB_CURRENT_WORKSPACE,
@@ -980,7 +1005,7 @@ void EWMHManager::setCurrentWorkspacePB(int workspace) {
 }
 
 void EWMHManager::setWorkspaceNamesPB(const std::vector<std::string>& names) {
-    // Concatenate names with null separators
+    
     std::string data;
     for (size_t i = 0; i < names.size(); ++i) {
         if (i > 0) data += '\0';
@@ -1048,5 +1073,5 @@ void EWMHManager::setWorkspaceWindowCountsPB(const std::vector<int>& counts) {
                    static_cast<int>(data.size()));
 }
 
-} // namespace ewmh
-} // namespace pblank
+} 
+} 

@@ -18,6 +18,7 @@
 #include <fstream>
 #include <cerrno>
 #include <sys/wait.h>
+#include <unordered_set>
 
 namespace pblank {
 
@@ -32,7 +33,7 @@ void WindowManager::setConfigPath(const std::filesystem::path& path) {
 }
 
 bool WindowManager::initialize() {
-    // Open X11 display
+    
     Display* raw_display = XOpenDisplay(nullptr);
     if (!raw_display) {
         std::cerr << "Failed to open X display" << std::endl;
@@ -43,27 +44,27 @@ bool WindowManager::initialize() {
     screen_ = DefaultScreen(display_.get());
     root_ = RootWindow(display_.get(), screen_);
     
-    // Check if another window manager is running
+    
     if (!becomeWindowManager()) {
         std::cerr << "Another window manager is already running" << std::endl;
         return false;
     }
     
-    // Initialize EWMH manager for desktop integration
+    
     ewmh_manager_ = std::make_unique<ewmh::EWMHManager>(display_.get(), root_);
     if (!ewmh_manager_->initialize("Pointblank")) {
         std::cerr << "Warning: EWMH initialization failed" << std::endl;
-        // Non-fatal - continue without EWMH support
+        
     } else {
         
-        // Set up EWMH callbacks
+        
         ewmh_manager_->setDesktopSwitchCallback([this](int desktop) {
-            // Convert from 0-indexed to 1-indexed for switchWorkspace
+            
             switchWorkspace(desktop + 1);
         });
         
         ewmh_manager_->setWindowActionCallback([this](Window window, Atom action) {
-            // Handle window actions from EWMH
+            
             if (action == ewmh_manager_->getAtoms().NET_CLOSE_WINDOW) {
                 if (clients_.find(window) != clients_.end()) {
                     killActiveWindow();
@@ -72,10 +73,10 @@ bool WindowManager::initialize() {
         });
     }
     
-    // Initialize workspace last focus tracking
+    
     workspace_last_focus_.resize(max_workspaces_, None);
     
-    // Initialize components
+    
     toaster_ = std::make_unique<Toaster>(display_.get(), root_);
     if (!toaster_->initialize()) {
         std::cerr << "Failed to initialize Toaster OSD" << std::endl;
@@ -83,16 +84,29 @@ bool WindowManager::initialize() {
     }
     
     config_parser_ = std::make_unique<ConfigParser>(toaster_.get());
+    
+    
+    performance_tuner_ = std::make_unique<PerformanceTuner>();
+    render_pipeline_ = std::make_unique<RenderPipeline>(display_.get(), root_);
+    render_pipeline_->setPerformanceTuner(performance_tuner_.get());
+    
+    
     layout_engine_ = std::make_unique<LayoutEngine>();
     layout_engine_->setDisplay(display_.get());
+    layout_engine_->setRenderPipeline(render_pipeline_.get());
+    
     layout_config_parser_ = std::make_unique<LayoutConfigParser>(layout_engine_.get());
     keybind_manager_ = std::make_unique<KeybindManager>();
     monitor_manager_ = std::make_unique<MonitorManager>();
+    
+    
+    window_swallower_ = std::make_unique<WindowSwallower>();
+    
     if (!monitor_manager_->initialize(display_.get())) {
         std::cerr << "Failed to initialize MonitorManager - running without multi-monitor support" << std::endl;
     }
     
-    // Load configuration with error handling
+    
     auto config_path = ConfigParser::getDefaultConfigPath();
     
     if (!loadConfigSafe()) {
@@ -102,13 +116,17 @@ bool WindowManager::initialize() {
     } else {
         toaster_->success("Point Blank initialized");
         
-        // Apply configuration to layout engine
+        
         applyConfigToLayout();
         
-        // Register keybinds from config
+        
         const auto& config = config_parser_->getConfig();
         
+        std::cerr << "[KEYBIND] Number of keybinds in config: " << config.keybinds.size() << std::endl;
+        
         for (const auto& bind : config.keybinds) {
+            std::cerr << "[KEYBIND] Registering: key=" << bind.key << " modifiers=" << bind.modifiers << " action=" << bind.action << std::endl;
+            
             std::string keybind_str;
             if (!bind.modifiers.empty()) {
                 keybind_str = bind.modifiers + ", " + bind.key;
@@ -122,61 +140,75 @@ bool WindowManager::initialize() {
             keybind_manager_->registerKeybind(keybind_str, action);
         }
         
-        // Grab keys on root window
+        
         keybind_manager_->grabKeys(display_.get(), root_);
         
-        // Execute autostart commands
+        
         if (!config.autostart.commands.empty()) {
+            std::cerr << "[AUTOSTART] Found " << config.autostart.commands.size() << " commands to execute" << std::endl;
             for (const auto& cmd : config.autostart.commands) {
+                std::cerr << "[AUTOSTART] Executing: " << cmd << std::endl;
                 
                 int result = fork();
                 if (result == 0) {
-                    // Child process - redirect stderr to stdout for debugging
+                    
+                    
                     dup2(STDOUT_FILENO, STDERR_FILENO);
                     
-                    // Use execlp to search PATH
+                    
                     execlp("/bin/sh", "sh", "-c", cmd.c_str(), (char*)nullptr);
                     
-                    // If exec fails
+                    
                     int err = errno;
                     std::cerr << "[AUTOSTART]   ERROR: execlp failed with errno " << err << ": " << strerror(err) << std::endl;
                     _exit(1);
                 } else if (result > 0) {
-                    // Parent process - don't wait, let it run in background
+                    
                 } else {
                     std::cerr << "[AUTOSTART]   ERROR: fork() failed for: " << cmd << std::endl;
                 }
             }
+        } else {
+            std::cerr << "[AUTOSTART] No commands configured" << std::endl;
         }
         
-        // Setup hot-reload watcher for configuration
+        
         setupConfigWatcher();
     }
     
-    // Setup window manager event mask
+    
     setupEventMask();
     
-    // Update EWMH with workspace count
+    
+    setupScratchpadManager();
+    
+    
+    setupIPCServer();
+    
+    
     updateEWMHWorkspaceCount();
     
-    // Sync X server to ensure all EWMH properties (like StatusBar's DOCK type) are visible
+    
     XSync(display_.get(), False);
     
-    // Manage existing windows
+    
     scanExistingWindows();
     
-    // Update EWMH client list after scanning existing windows
+    
     updateEWMHClientList();
+    
+    
+    updateExternalBarLayoutMode();
     
     return true;
 }
 
 bool WindowManager::becomeWindowManager() {
-    // Set error handler to detect other WMs
+    
     wm_detected_ = false;
     XSetErrorHandler(&WindowManager::onWMDetected);
     
-    // Try to select SubstructureRedirect on root
+    
     XSelectInput(display_.get(), root_,
                  SubstructureRedirectMask | SubstructureNotifyMask);
     XSync(display_.get(), False);
@@ -185,7 +217,7 @@ bool WindowManager::becomeWindowManager() {
         return false;
     }
     
-    // Set our error handler
+    
     XSetErrorHandler(&WindowManager::onXError);
     return true;
 }
@@ -202,14 +234,24 @@ void WindowManager::setupEventMask() {
                  LeaveWindowMask |
                  FocusChangeMask |
                  ButtonPressMask |
-                 ButtonReleaseMask |
-                 PointerMotionMask);
+                 ButtonReleaseMask);
     
-    // Set default left pointer cursor on root window to prevent X-shaped cursor
-    // when no window is focused or during window transitions
+    
+    
+    
+    
     Cursor default_cursor = XCreateFontCursor(display_.get(), XC_left_ptr);
     XDefineCursor(display_.get(), root_, default_cursor);
     XFlush(display_.get());
+}
+
+void WindowManager::setupScratchpadManager() {
+    scratchpad_manager_ = std::make_unique<ScratchpadManager>();
+}
+
+void WindowManager::setupIPCServer() {
+    ipc_server_ = std::make_unique<IPCServer>(display_.get(), root_);
+    ipc_server_->start();
 }
 
 void WindowManager::scanExistingWindows() {
@@ -228,24 +270,29 @@ void WindowManager::scanExistingWindows() {
             !attrs.override_redirect &&
             attrs.map_state == IsViewable) {
             
-            // Check EWMH window type for floating detection
+            
+            if (clients_.bucket_count() < num_windows) {
+                clients_.reserve(num_windows * 2);
+            }
+            
+            
             bool should_float = false;
             if (ewmh_manager_) {
                 ewmh::WindowType win_type = ewmh_manager_->getWindowType(top_level_windows[i]);
                 
-                // Skip dock, desktop, and other non-tiled windows entirely
+                
                 if (win_type == ewmh::WindowType::Dock || 
                     win_type == ewmh::WindowType::Desktop) {
 
                     
-                    // Register dock windows for strut tracking
+                    
                     if (win_type == ewmh::WindowType::Dock) {
                         ewmh_manager_->registerDockWindow(top_level_windows[i]);
                     }
                     continue;
                 }
                 
-                // Dialog, utility, toolbar, splash, and notification windows should float
+                
                 if (ewmh::EWMHManager::isFloatingType(win_type)) {
                     should_float = true;
 
@@ -253,15 +300,15 @@ void WindowManager::scanExistingWindows() {
                 }
             }
             
-            // Grab button presses for click-to-focus
+            
             XGrabButton(display_.get(), AnyButton, AnyModifier, top_level_windows[i],
                         False, ButtonPressMask, GrabModeSync, GrabModeAsync, None, None);
             
-            // Select input for focus-follows-mouse - receive EnterNotify events
+            
             XSelectInput(display_.get(), top_level_windows[i], 
                         EnterWindowMask | LeaveWindowMask | FocusChangeMask);
             
-            // Create managed window
+            
             auto managed = std::make_unique<ManagedWindow>(top_level_windows[i], display_.get());
             managed->setWorkspace(current_workspace_);
             
@@ -272,6 +319,30 @@ void WindowManager::scanExistingWindows() {
             }
             
             clients_[top_level_windows[i]] = std::move(managed);
+            
+            
+            if (render_pipeline_) {
+                auto it = clients_.find(top_level_windows[i]);
+                if (it != clients_.end()) {
+                    ManagedWindow* managed_win = it->second.get();
+                    int x, y;
+                    unsigned int w, h;
+                    managed_win->getGeometry(x, y, w, h);
+                    WindowRenderData data{};
+                    data.window = top_level_windows[i];
+                    data.x = x;
+                    data.y = y;
+                    data.width = w;
+                    data.height = h;
+                    data.border_width = 2;  
+                    data.border_color = layout_engine_->getUnfocusedBorderColor();
+                    data.flags = WindowRenderData::FLAG_VISIBLE;
+                    data.flags |= (managed_win->isFloating()) ? WindowRenderData::FLAG_FLOATING : 0;
+                    data.flags |= (managed_win->isFullscreen()) ? WindowRenderData::FLAG_FULLSCREEN : 0;
+                    data.opacity = 1.0;  
+                    render_pipeline_->updateWindow(data);
+                }
+            }
         }
     }
     
@@ -282,18 +353,21 @@ void WindowManager::scanExistingWindows() {
 void WindowManager::run() {
     XEvent event;
     
-    // Cache atom for ClientMessage handling
+    
     Atom net_active_window = XInternAtom(display_.get(), "_NET_ACTIVE_WINDOW", False);
     
     while (running_) {
-        // Update toaster (render notifications)
+        
+        auto frame_start = render_pipeline_->beginFrame();
+        
+        
         toaster_->update();
         
-        // Process X11 events
+        
         if (XPending(display_.get()) > 0) {
             XNextEvent(display_.get(), &event);
             
-            // Skip events for toaster window
+            
             if (event.xany.window == toaster_->getWindow()) {
                 continue;
             }
@@ -344,60 +418,66 @@ void WindowManager::run() {
                     break;
                     
                 case ClientMessage:
-                    // Let EWMH manager handle client messages first
+                    
                     if (ewmh_manager_ && ewmh_manager_->handleClientMessage(event.xclient)) {
-                        // EWMH manager handled the message
+                        
                         break;
                     }
                     
-                    // Handle _NET_ACTIVE_WINDOW for workspace auto-switch (fallback)
+                    
                     if (event.xclient.message_type == net_active_window) {
                         Window target_window = event.xclient.window;
                         auto it = clients_.find(target_window);
                         if (it != clients_.end()) {
                             int window_workspace = it->second->getWorkspace();
                             
-                            // If the window is on a different workspace, switch to it
+                            
                             if (window_workspace != current_workspace_) {
 
 
                                 
-                                // Hide windows on current workspace
+                                
                                 hideWorkspaceWindows(current_workspace_);
                                 
-                                // Update current workspace
+                                
                                 current_workspace_ = window_workspace;
                                 layout_engine_->setCurrentWorkspace(window_workspace);
                                 
-                                // Show windows on new workspace
+                                
                                 showWorkspaceWindows(window_workspace);
                                 
-                                // Apply layout for new workspace
+                                
                                 applyLayout();
                                 
-                                // Update EWMH current desktop
+                                
                                 updateEWMHCurrentWorkspace();
                                 
-                                // Flush to ensure all changes are committed
+                                
                                 XFlush(display_.get());
                             }
                             
-                            // Focus the window
+                            
                             XSetInputFocus(display_.get(), target_window, RevertToPointerRoot, CurrentTime);
                             layout_engine_->focusWindow(target_window);
                             layout_engine_->updateBorderColors();
                             workspace_last_focus_[current_workspace_] = target_window;
                             
-                            // Update EWMH active window
+                            
                             updateEWMHActiveWindow(target_window);
                         }
                     }
                     break;
             }
         } else {
-            // No events pending - small sleep to avoid busy waiting
-            usleep(1000); // 1ms
+            
+            usleep(1000); 
         }
+        
+        
+        render_pipeline_->endFrame();
+        
+        
+        performance_tuner_->endFrame(frame_start);
     }
 }
 
@@ -410,88 +490,177 @@ void WindowManager::handleMapRequest(const XMapRequestEvent& event) {
 }
 
 void WindowManager::manageWindow(Window window) {
-    // Check EWMH window type first - skip dock and desktop windows entirely
+    
     if (ewmh_manager_) {
         ewmh::WindowType win_type = ewmh_manager_->getWindowType(window);
         
-        // Skip dock and desktop windows - they should never be managed
+        
         if (win_type == ewmh::WindowType::Dock || 
             win_type == ewmh::WindowType::Desktop) {
             
-            // Register dock windows for strut tracking
+            
             if (win_type == ewmh::WindowType::Dock) {
                 ewmh_manager_->registerDockWindow(window);
                 
-                // Re-apply layout to account for new dock struts
+                
                 applyLayout();
             }
             
-            // Just map the window but don't manage it
+            
             XMapWindow(display_.get(), window);
             return;
+        }
+    }
+    
+    
+    
+    {
+        XClassHint class_hint;
+        if (XGetClassHint(display_.get(), window, &class_hint)) {
+            bool is_feh = false;
+            if (class_hint.res_name) {
+                std::string class_name(class_hint.res_name);
+                
+                std::transform(class_name.begin(), class_name.end(), class_name.begin(), 
+                             [](unsigned char c){ return std::tolower(c); });
+                is_feh = (class_name == "feh");
+            }
+            if (class_hint.res_name) XFree(class_hint.res_name);
+            if (class_hint.res_class) XFree(class_hint.res_class);
+            
+            if (is_feh) {
+                
+                
+                XMapWindow(display_.get(), window);
+                
+                Window windows[1] = { window };
+                XRestackWindows(display_.get(), windows, 1);
+                return;
+            }
         }
     }
     
     auto managed = std::make_unique<ManagedWindow>(window, display_.get());
     managed->setWorkspace(current_workspace_);
     
-    // Apply window rules from config
+    
     const auto& rules = config_parser_->getConfig().window_rules;
     if (rules.opacity) {
         managed->setOpacity(*rules.opacity);
     }
     
-    // Check EWMH window type for floating detection
+    
     bool should_float = false;
     if (ewmh_manager_) {
         ewmh::WindowType win_type = ewmh_manager_->getWindowType(window);
         
-        // Dialog, utility, toolbar, splash, and notification windows should float
+        
         if (ewmh::EWMHManager::isFloatingType(win_type)) {
             should_float = true;
             managed->setFloating(true);
 
         }
         
-        // Set EWMH properties for the window
+        
         ewmh_manager_->setWindowDesktop(window, current_workspace_);
         ewmh_manager_->setWindowPID(window, getpid());
     }
     
-    // Grab button presses for click-to-focus
+    
     XGrabButton(display_.get(), AnyButton, AnyModifier, window,
                 False, ButtonPressMask, GrabModeSync, GrabModeAsync, None, None);
     
-    // Select input for focus-follows-mouse - receive EnterNotify events
+    
     XSelectInput(display_.get(), window, EnterWindowMask | LeaveWindowMask | FocusChangeMask);
 
-    // Add to layout engine (respects floating state)
+    
     if (!should_float) {
-        layout_engine_->addWindow(window);
+        
+        if (window_swallower_->isEnabled()) {
+            Window swallower = window_swallower_->getSwallowerForWindow(window);
+            if (swallower != None) {
+                
+                should_float = true;
+                managed->setFloating(true);
+            }
+        }
+        
+        if (!should_float) {
+            layout_engine_->addWindow(window);
+        } else {
+            
+            
+        }
     }
     
-    // Map the window
+    
+    if (window_swallower_->isEnabled()) {
+        XClassHint class_hint;
+        if (XGetClassHint(display_.get(), window, &class_hint)) {
+            if (class_hint.res_name) {
+                std::string class_name(class_hint.res_name);
+                
+                std::transform(class_name.begin(), class_name.end(), class_name.begin(), 
+                             [](unsigned char c){ return std::tolower(c); });
+                
+                
+                if (window_swallower_->shouldSwallow(None, window)) {
+                    
+                    window_swallower_->registerSwallower(window);
+                }
+            }
+            if (class_hint.res_name) XFree(class_hint.res_name);
+            if (class_hint.res_class) XFree(class_hint.res_class);
+        }
+    }
+    
+    
     XMapWindow(display_.get(), window);
     
-    // Focus the new window
+    
     XSetInputFocus(display_.get(), window, RevertToPointerRoot, CurrentTime);
     
-    // Store in clients map
-    clients_[window] = std::move(managed);
     
-    // Update last focus for this workspace
+    clients_.emplace(window, std::move(managed));
+    
+    
+    if (render_pipeline_) {
+        
+        auto it = clients_.find(window);
+        if (it != clients_.end()) {
+            ManagedWindow* managed_win = it->second.get();
+            int x, y;
+            unsigned int w, h;
+            managed_win->getGeometry(x, y, w, h);
+            WindowRenderData data{};
+            data.window = window;
+            data.x = x;
+            data.y = y;
+            data.width = w;
+            data.height = h;
+            data.border_width = 2;  
+            data.border_color = layout_engine_->getFocusedBorderColor();
+            data.flags = WindowRenderData::FLAG_VISIBLE | WindowRenderData::FLAG_FOCUSED;
+            data.flags |= (managed_win->isFloating()) ? WindowRenderData::FLAG_FLOATING : 0;
+            data.flags |= (managed_win->isFullscreen()) ? WindowRenderData::FLAG_FULLSCREEN : 0;
+            data.opacity = 1.0;  
+            render_pipeline_->updateWindow(data);
+        }
+    }
+    
+    
     workspace_last_focus_[current_workspace_] = window;
     
-    // Reapply layout
+    
     applyLayout();
     
-    // Update border colors to reflect new focus
+    
     layout_engine_->updateBorderColors();
     
-    // Update EWMH client list
+    
     updateEWMHClientList();
     
-    // Update EWMH active window
+    
     updateEWMHActiveWindow(window);
 }
 
@@ -499,7 +668,7 @@ void WindowManager::handleConfigureRequest(const XConfigureRequestEvent& event) 
     auto it = clients_.find(event.window);
     
     if (it != clients_.end() && it->second->isFloating()) {
-        // Allow floating windows to configure themselves
+        
         XWindowChanges changes;
         changes.x = event.x;
         changes.y = event.y;
@@ -511,7 +680,7 @@ void WindowManager::handleConfigureRequest(const XConfigureRequestEvent& event) 
         
         XConfigureWindow(display_.get(), event.window, event.value_mask, &changes);
     } else {
-        // Tiled windows: just acknowledge the request but keep our geometry
+        
         XWindowChanges changes;
         int x, y;
         unsigned int width, height;
@@ -523,7 +692,7 @@ void WindowManager::handleConfigureRequest(const XConfigureRequestEvent& event) 
             changes.width = width;
             changes.height = height;
         } else {
-            // Unmanaged window - grant the request
+            
             changes.x = event.x;
             changes.y = event.y;
             changes.width = event.width;
@@ -543,18 +712,23 @@ void WindowManager::handleKeyPress(const XKeyEvent& event) {
 }
 
 void WindowManager::handleButtonPress(const XButtonEvent& event) {
-    // Check for Super+left-click drag-to-move
-    // Super modifier is typically Mod4Mask
+    
+    
     const bool super_held = (event.state & Mod4Mask) != 0;
     const bool left_click = event.button == Button1;
+    const bool right_click = event.button == Button3;
     
     if (super_held && left_click) {
         auto it = clients_.find(event.window);
         if (it != clients_.end() && 
             it->second->getWorkspace() == current_workspace_) {
-            // Start drag-to-move for any window (floating or tiled)
+            
+            
+            
+            
+            
             startDrag(event.window, event.x_root, event.y_root);
-            // Grab pointer for continuous motion events
+            
             XGrabPointer(display_.get(), event.window, True,
                         ButtonReleaseMask | PointerMotionMask,
                         GrabModeAsync, GrabModeAsync,
@@ -563,17 +737,33 @@ void WindowManager::handleButtonPress(const XButtonEvent& event) {
         }
     }
     
-    // Check for floating window edge resize (left-click without modifiers)
-    // Only if floating_resize_enabled is true
+    
+    if (super_held && right_click) {
+        auto it = clients_.find(event.window);
+        if (it != clients_.end() && 
+            it->second->getWorkspace() == current_workspace_) {
+            
+            startBidirectionalResize(event.window, event.x_root, event.y_root);
+            
+            XGrabPointer(display_.get(), event.window, True,
+                        ButtonReleaseMask | PointerMotionMask,
+                        GrabModeAsync, GrabModeAsync,
+                        None, None, CurrentTime);
+            return;
+        }
+    }
+    
+    
+    
     if (floating_resize_enabled_ && left_click && !super_held) {
         auto it = clients_.find(event.window);
         if (it != clients_.end() && 
             it->second->getWorkspace() == current_workspace_ &&
             it->second->isFloating()) {
-            // Check if click is near the edge
+            
             std::string edge = getEdgeAtPosition(event.window, event.x_root, event.y_root);
             if (!edge.empty()) {
-                // Start resize
+                
                 startResize(event.window, event.x_root, event.y_root, edge);
                 XGrabPointer(display_.get(), event.window, True,
                             ButtonReleaseMask | PointerMotionMask,
@@ -584,19 +774,19 @@ void WindowManager::handleButtonPress(const XButtonEvent& event) {
         }
     }
     
-    // Click to focus when focus_follows_mouse is disabled
+    
     auto it = clients_.find(event.window);
     if (it != clients_.end() && it->second->getWorkspace() == current_workspace_) {
-        // Focus the clicked window
+        
         XSetInputFocus(display_.get(), event.window, RevertToPointerRoot, CurrentTime);
         layout_engine_->focusWindow(event.window);
         layout_engine_->updateBorderColors();
         workspace_last_focus_[current_workspace_] = event.window;
         
-        // Replay the button event to the window so it receives it normally
+        
         XAllowEvents(display_.get(), ReplayPointer, event.time);
     } else {
-        // Not our window or wrong workspace - let the event through
+        
         XAllowEvents(display_.get(), ReplayPointer, event.time);
     }
 }
@@ -610,6 +800,10 @@ void WindowManager::handleButtonRelease(const XButtonEvent& event) {
         endResize();
         XUngrabPointer(display_.get(), CurrentTime);
     }
+    if (bidirectional_resize_) {
+        endBidirectionalResize();
+        XUngrabPointer(display_.get(), CurrentTime);
+    }
 }
 
 void WindowManager::handleMotionNotify(const XMotionEvent& event) {
@@ -618,6 +812,9 @@ void WindowManager::handleMotionNotify(const XMotionEvent& event) {
     }
     if (resizing_) {
         updateResize(event.x_root, event.y_root);
+    }
+    if (bidirectional_resize_) {
+        updateBidirectionalResize(event.x_root, event.y_root);
     }
 }
 
@@ -632,49 +829,49 @@ void WindowManager::startDrag(Window window, int root_x, int root_y) {
     drag_start_x_ = root_x;
     drag_start_y_ = root_y;
     
-    // Get current window position in ROOT coordinates
-    // XGetGeometry returns coordinates relative to parent window, not root.
-    // We need to translate them to root coordinates using XTranslateCoordinates.
+    
+    
+    
     Window root_return;
     int win_x, win_y;
     unsigned int width, height, border_width, depth;
     
-    // Use XGetGeometry to get window size and position relative to parent
+    
     if (XGetGeometry(display_.get(), window, &root_return, &win_x, &win_y,
                      &width, &height, &border_width, &depth)) {
-        // Translate coordinates from window-relative to root-relative
-        // XGetGeometry gives us position relative to parent, but we need root coordinates
+        
+        
         int root_x_translated, root_y_translated;
         Window child_return;
         
         if (XTranslateCoordinates(display_.get(), window, root_,
-                                  0, 0,  // Position relative to window itself
+                                  0, 0,  
                                   &root_x_translated, &root_y_translated,
                                   &child_return)) {
-            // Now we have the window's top-left corner in root coordinates
+            
             drag_window_start_x_ = root_x_translated;
             drag_window_start_y_ = root_y_translated;
         } else {
-            // Fallback: use XGetGeometry coordinates (may be relative to parent)
+            
             drag_window_start_x_ = win_x;
             drag_window_start_y_ = win_y;
         }
     } else {
-        // Fallback to cached geometry if XGetGeometry fails
+        
         int x, y;
         it->second->getGeometry(x, y, width, height);
         drag_window_start_x_ = x;
         drag_window_start_y_ = y;
     }
     
-    // Store the original floating state
+    
     drag_was_floating_ = it->second->isFloating();
     
-    // Note: We do NOT automatically set floating during drag
-    // The window remains in its layout and can be repositioned within constraints
-    // Floating should only be toggled via explicit keybinding/command
     
-    // Raise window to top
+    
+    
+    
+    
     XRaiseWindow(display_.get(), window);
 }
 
@@ -688,50 +885,45 @@ void WindowManager::updateDrag(int root_x, int root_y) {
         return;
     }
     
-    // Get drag configuration
-    const auto& drag_config = config_parser_->getConfig().drag;
     
-    // Calculate new position based on cursor movement
     int dx = root_x - drag_start_x_;
     int dy = root_y - drag_start_y_;
     
     int new_x = drag_window_start_x_ + dx;
     int new_y = drag_window_start_y_ + dy;
     
-    // Get current window size
+    
     int x, y;
     unsigned int width, height;
     it->second->getGeometry(x, y, width, height);
     
-    // Move window - this provides visual feedback during drag
-    // For both floating and tiled windows, we allow free movement during drag
-    // Tiled windows will snap back to layout on release
+    
+    
+    
     XMoveWindow(display_.get(), drag_window_, new_x, new_y);
     it->second->setGeometry(new_x, new_y, width, height);
     
-    // For tiled windows, check for swap-on-drag if enabled
-    if (!drag_was_floating_ && drag_config.swap_on_drag) {
-        // Find window under cursor
+    
+    
+    if (!drag_was_floating_) {
+        
         Window target_window = findWindowAtPosition(root_x, root_y);
         
-        // Only swap if we found a different target and it's not the same as last swap
-        if (target_window != None && target_window != drag_window_ && target_window != drag_last_swap_target_) {
-            // Check if target is also a tiled window on the same workspace
+        
+        if (target_window != None && target_window != drag_window_ && 
+            target_window != drag_last_swap_target_) {
+            
             auto target_it = clients_.find(target_window);
             if (target_it != clients_.end() && 
                 !target_it->second->isFloating() &&
                 target_it->second->getWorkspace() == current_workspace_) {
                 
-                // Swap windows in BSP tree (internal structure only)
-                layout_engine_->swapWindows(drag_window_, target_window);
-                drag_last_swap_target_ = target_window;
                 
-                // Note: We do NOT call applyLayout() here to avoid jitter
-                // The layout will be applied on endDrag() to snap windows to their positions
-                // The dragged window continues to follow the cursor during drag
+                
+                drag_last_swap_target_ = target_window;
             }
         } else if (target_window == None) {
-            // Clear last swap target when not over any window
+            
             drag_last_swap_target_ = None;
         }
     }
@@ -747,10 +939,16 @@ void WindowManager::endDrag() {
     
     auto it = clients_.find(drag_window_);
     if (it != clients_.end()) {
-        // If the window was originally tiled (not floating), 
-        // reapply layout to snap it back to layout constraints
-        if (!drag_was_floating_) {
-            // Reapply layout to snap window back to its position
+        if (!drag_was_floating_ && drag_last_swap_target_ != None) {
+            Window swapped = drag_window_;
+            layout_engine_->swapWindows(swapped, drag_last_swap_target_);
+            applyLayout();
+            layout_engine_->focusWindow(swapped);
+            layout_engine_->updateBorderColors();
+            XSetInputFocus(display_.get(), swapped, RevertToPointerRoot, CurrentTime);
+            updateEWMHActiveWindow(swapped);
+            workspace_last_focus_[current_workspace_] = swapped;
+        } else if (!drag_was_floating_) {
             applyLayout();
             layout_engine_->updateBorderColors();
         }
@@ -762,32 +960,32 @@ void WindowManager::endDrag() {
 }
 
 Window WindowManager::findWindowAtPosition(int root_x, int root_y) {
-    // Find a managed window that contains the given root coordinates
-    // Use actual X11 window positions, not cached geometry, for accuracy during drag
+    
+    
     for (const auto& [window, managed] : clients_) {
-        // Skip the currently dragged window
+        
         if (window == drag_window_) {
             continue;
         }
         
-        // Skip windows not on current workspace
+        
         if (managed->getWorkspace() != current_workspace_) {
             continue;
         }
         
-        // Skip floating windows when looking for swap target
+        
         if (managed->isFloating()) {
             continue;
         }
         
-        // Get actual window position from X11
+        
         Window root_return;
         int win_x, win_y;
         unsigned int width, height, border_width, depth;
         
         if (XGetGeometry(display_.get(), window, &root_return, &win_x, &win_y,
                          &width, &height, &border_width, &depth)) {
-            // Translate to root coordinates
+            
             int root_x_win, root_y_win;
             Window child_return;
             
@@ -795,7 +993,7 @@ Window WindowManager::findWindowAtPosition(int root_x, int root_y) {
                                       0, 0,
                                       &root_x_win, &root_y_win,
                                       &child_return)) {
-                // Check if the point is within this window's bounds
+                
                 if (root_x >= root_x_win && root_x < root_x_win + static_cast<int>(width) &&
                     root_y >= root_y_win && root_y < root_y_win + static_cast<int>(height)) {
                     return window;
@@ -808,10 +1006,10 @@ Window WindowManager::findWindowAtPosition(int root_x, int root_y) {
 }
 
 std::string WindowManager::getEdgeAtPosition(Window window, int root_x, int root_y) {
-    // Get the edge size from config
+    
     int edge_size = floating_resize_edge_size_;
     
-    // Get window geometry
+    
     Window root_return;
     int win_x, win_y;
     unsigned int width, height, border_width, depth;
@@ -821,7 +1019,7 @@ std::string WindowManager::getEdgeAtPosition(Window window, int root_x, int root
         return "";
     }
     
-    // Translate to root coordinates
+    
     int root_x_win, root_y_win;
     Window child_return;
     
@@ -832,17 +1030,17 @@ std::string WindowManager::getEdgeAtPosition(Window window, int root_x, int root
         return "";
     }
     
-    // Calculate relative position within window
+    
     int rel_x = root_x - root_x_win;
     int rel_y = root_y - root_y_win;
     
-    // Check which edge(s) the cursor is near
+    
     bool near_left = (rel_x >= 0 && rel_x < edge_size);
     bool near_right = (rel_x >= static_cast<int>(width) - edge_size && rel_x < static_cast<int>(width));
     bool near_top = (rel_y >= 0 && rel_y < edge_size);
     bool near_bottom = (rel_y >= static_cast<int>(height) - edge_size && rel_y < static_cast<int>(height));
     
-    // Determine edge string
+    
     if (near_left && near_top) return "topleft";
     if (near_left && near_bottom) return "bottomleft";
     if (near_right && near_top) return "topright";
@@ -861,7 +1059,7 @@ void WindowManager::startResize(Window window, int root_x, int root_y, const std
         return;
     }
     
-    // Only allow resizing floating windows
+    
     if (!it->second->isFloating()) {
         return;
     }
@@ -872,14 +1070,18 @@ void WindowManager::startResize(Window window, int root_x, int root_y, const std
     resize_start_y_ = root_y;
     resize_edge_ = edge;
     
-    // Get current window geometry
+    
     int x, y;
     unsigned int width, height;
     it->second->getGeometry(x, y, width, height);
+    
+    
     resize_start_width_ = width;
     resize_start_height_ = height;
+    resize_start_window_x_ = x;  
+    resize_start_window_y_ = y;
     
-    // Raise window to top
+    
     XRaiseWindow(display_.get(), window);
     
 }
@@ -894,41 +1096,37 @@ void WindowManager::updateResize(int root_x, int root_y) {
         return;
     }
     
-    // Calculate deltas
+    
     int dx = root_x - resize_start_x_;
     int dy = root_y - resize_start_y_;
     
-    // Get current window geometry
-    int x, y;
-    unsigned int width, height;
-    it->second->getGeometry(x, y, width, height);
     
-    // Minimum size constraints
-    const unsigned int min_width = 100;
-    const unsigned int min_height = 100;
+    unsigned int min_width = 100;
+    unsigned int min_height = 100;
     
-    // Calculate new dimensions based on edge
-    int new_x = x;
-    int new_y = y;
+    
+    
+    int new_x = resize_start_window_x_;
+    int new_y = resize_start_window_y_;
     int new_width = resize_start_width_;
     int new_height = resize_start_height_;
     
     if (resize_edge_.find("left") != std::string::npos) {
         new_width = std::max(min_width, static_cast<unsigned int>(resize_start_width_ - dx));
-        new_x = x + (resize_start_width_ - new_width);
+        new_x = resize_start_window_x_ + (resize_start_width_ - new_width);
     }
     if (resize_edge_.find("right") != std::string::npos) {
         new_width = std::max(min_width, static_cast<unsigned int>(resize_start_width_ + dx));
     }
     if (resize_edge_.find("top") != std::string::npos) {
         new_height = std::max(min_height, static_cast<unsigned int>(resize_start_height_ - dy));
-        new_y = y + (resize_start_height_ - new_height);
+        new_y = resize_start_window_y_ + (resize_start_height_ - new_height);
     }
     if (resize_edge_.find("bottom") != std::string::npos) {
         new_height = std::max(min_height, static_cast<unsigned int>(resize_start_height_ + dy));
     }
     
-    // Apply new geometry
+    
     XMoveResizeWindow(display_.get(), resize_window_, new_x, new_y, new_width, new_height);
     it->second->setGeometry(new_x, new_y, new_width, new_height);
 }
@@ -938,7 +1136,7 @@ void WindowManager::endResize() {
         return;
     }
     
-    // Store the new geometry as tiled geometry for this floating window
+    
     if (resize_window_ != None) {
         auto it = clients_.find(resize_window_);
         if (it != clients_.end()) {
@@ -955,6 +1153,186 @@ void WindowManager::endResize() {
     
 }
 
+void WindowManager::startBidirectionalResize(Window window, int root_x, int root_y) {
+    auto it = clients_.find(window);
+    if (it == clients_.end()) {
+        return;
+    }
+    
+    bidirectional_resize_ = true;
+    bidirectional_resize_window_ = window;
+    bidirectional_resize_start_x_ = root_x;
+    bidirectional_resize_start_y_ = root_y;
+    
+    
+    bidirectional_resize_was_floating_ = it->second->isFloating();
+    
+    
+    int x, y;
+    unsigned int width, height;
+    it->second->getGeometry(x, y, width, height);
+    bidirectional_resize_window_x_ = x;
+    bidirectional_resize_window_y_ = y;
+    bidirectional_resize_window_width_ = width;
+    bidirectional_resize_window_height_ = height;
+    
+    
+    XRaiseWindow(display_.get(), window);
+    
+    
+    layout_engine_->setResizeBorderHighlight(true, window);
+}
+
+void WindowManager::updateBidirectionalResize(int root_x, int root_y) {
+    if (!bidirectional_resize_ || bidirectional_resize_window_ == None) {
+        return;
+    }
+    
+    auto it = clients_.find(bidirectional_resize_window_);
+    if (it == clients_.end()) {
+        return;
+    }
+    
+    
+    int dx = root_x - bidirectional_resize_start_x_;
+    int dy = root_y - bidirectional_resize_start_y_;
+    
+    
+    bool is_floating = it->second->isFloating();
+    
+    if (!is_floating) {
+        
+        
+        
+        
+        
+        const double resize_sensitivity = 0.015;
+        
+        
+        double delta_x = dx * resize_sensitivity;
+        double delta_y = dy * resize_sensitivity;
+        
+        
+        
+        
+        
+        if (std::abs(delta_x) > 0.001) {
+            
+            
+            double horizontal_delta = (dx > 0) ? -delta_x : delta_x;
+            layout_engine_->resizeWindow(bidirectional_resize_window_, horizontal_delta);
+        }
+        
+        
+        if (std::abs(delta_y) > 0.001) {
+            
+            
+            double vertical_delta = (dy > 0) ? -delta_y : delta_y;
+            layout_engine_->resizeWindow(bidirectional_resize_window_, vertical_delta);
+        }
+        
+        
+        applyLayout();
+        layout_engine_->updateBorderColors();
+        return;
+    }
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    const unsigned int min_width = 100;
+    const unsigned int min_height = 100;
+    
+    
+    unsigned int max_width = 32767;  
+    unsigned int max_height = 32767;
+    
+    
+    int initial_x = bidirectional_resize_window_x_;
+    int initial_y = bidirectional_resize_window_y_;
+    unsigned int initial_width = bidirectional_resize_window_width_;
+    unsigned int initial_height = bidirectional_resize_window_height_;
+    
+    
+    
+    
+    int new_x = initial_x;
+    int new_y = initial_y;
+    unsigned int new_width = initial_width;
+    unsigned int new_height = initial_height;
+    
+    
+    if (dx != 0) {
+        int potential_width = static_cast<int>(initial_width) + dx;
+        new_width = std::max(min_width, std::min(max_width, static_cast<unsigned int>(potential_width)));
+        
+        
+        int width_delta = static_cast<int>(new_width) - static_cast<int>(initial_width);
+        
+        
+        
+        
+        if (dx < 0) {
+            
+            
+            new_x = initial_x + width_delta;
+        }
+        
+    }
+    
+    
+    if (dy != 0) {
+        int potential_height = static_cast<int>(initial_height) + dy;
+        new_height = std::max(min_height, std::min(max_height, static_cast<unsigned int>(potential_height)));
+        
+        
+        int height_delta = static_cast<int>(new_height) - static_cast<int>(initial_height);
+        
+        
+        
+        
+        if (dy < 0) {
+            
+            
+            new_y = initial_y + height_delta;
+        }
+        
+    }
+    
+    
+    XMoveResizeWindow(display_.get(), bidirectional_resize_window_, new_x, new_y, new_width, new_height);
+    it->second->setGeometry(new_x, new_y, new_width, new_height);
+}
+
+void WindowManager::endBidirectionalResize() {
+    if (!bidirectional_resize_) {
+        return;
+    }
+    
+    
+    layout_engine_->setResizeBorderHighlight(false, None);
+    
+    
+    if (bidirectional_resize_window_ != None) {
+        auto it = clients_.find(bidirectional_resize_window_);
+        if (it != clients_.end()) {
+            int x, y;
+            unsigned int width, height;
+            it->second->getGeometry(x, y, width, height);
+            it->second->storeTiledGeometry(x, y, width, height);
+        }
+    }
+    
+    bidirectional_resize_ = false;
+    bidirectional_resize_window_ = None;
+}
+
 void WindowManager::handleDestroyNotify(const XDestroyWindowEvent& event) {
     unmanageWindow(event.window);
 }
@@ -965,22 +1343,22 @@ void WindowManager::unmanageWindow(Window window) {
         return;
     }
     
-    // Clean up any pending unmap tracking for this window
+    
     pending_unmaps_.erase(window);
     
     int ws = it->second->getWorkspace();
     
-    // Remove from BSP tree
+    
     Window next_focus = layout_engine_->removeWindow(window);
     
-    // Clear from workspace last focus if needed
+    
     if (workspace_last_focus_[ws] == window) {
         workspace_last_focus_[ws] = next_focus;
     }
     
     clients_.erase(it);
     
-    // Focus the next window
+    
     if (next_focus != None) {
         auto next_it = clients_.find(next_focus);
         if (next_it != clients_.end() && next_it->second->getWorkspace() == current_workspace_) {
@@ -995,18 +1373,18 @@ void WindowManager::unmanageWindow(Window window) {
     applyLayout();
     layout_engine_->updateBorderColors();
     
-    // Update EWMH client list
+    
     updateEWMHClientList();
 }
 
 void WindowManager::handleUnmapNotify(const XUnmapEvent& event) {
-    // Only handle if it's not due to us reparenting or destroying
+    
     if (event.send_event) {
         return;
     }
     
-    // Check if this is an intentional unmap for workspace operations
-    // If so, skip unmanageWindow - the window is just being hidden, not closed
+    
+    
     if (pending_unmaps_.count(event.window)) {
         pending_unmaps_.erase(event.window);
         return;
@@ -1016,29 +1394,29 @@ void WindowManager::handleUnmapNotify(const XUnmapEvent& event) {
 }
 
 void WindowManager::handleEnterNotify(const XCrossingEvent& event) {
-    // Ignore events that aren't normal enter notifications
+    
     if (event.mode != NotifyNormal && event.mode != NotifyUngrab) {
         return;
     }
     
-    // Ignore if the event is from a grab or popup
+    
     if (event.detail == NotifyInferior) {
         return;
     }
     
-    // Skip focus-follows-mouse during pointer warping
+    
     if (is_warping_) {
-        is_warping_ = false;  // Clear the warping flag
+        is_warping_ = false;  
         return;
     }
     
     if (!focus_follows_mouse_) {
-        return;  // Click to focus mode - ignore EnterNotify events
+        return;  
     }
     
-    // Handle monitor focus follows mouse - switch workspace when mouse moves to different monitor
+    
     if (monitor_focus_follows_mouse_ && monitor_manager_) {
-        // Get current mouse position
+        
         Window root_return, child_return;
         int root_x, root_y, win_x, win_y;
         unsigned int mask_return;
@@ -1051,12 +1429,12 @@ void WindowManager::handleEnterNotify(const XCrossingEvent& event) {
                 
 
                 
-                // Switch to this monitor's workspace if we have more than one monitor
+                
                 if (monitor_manager_->getMonitorCount() > 1) {
-                    // Map monitor ID to workspace - for simplicity, use monitor ID as workspace
+                    
                     int target_workspace = monitor->id;
                     
-                    // Only switch if the target workspace is different
+                    
                     if (target_workspace != current_workspace_ && 
                         target_workspace < max_workspaces_) {
 
@@ -1067,35 +1445,35 @@ void WindowManager::handleEnterNotify(const XCrossingEvent& event) {
         }
     }
     
-    // Focus follows mouse - focus the window under cursor
+    
     auto it = clients_.find(event.window);
     if (it != clients_.end() && it->second->getWorkspace() == current_workspace_) {
-        // Don't re-focus if already focused
+        
         Window current_focus = layout_engine_->getFocusedWindow();
         if (current_focus == event.window) {
             return;
         }
         
-        // Raise the window to the top
+        
         XRaiseWindow(display_.get(), event.window);
         
-        // Set input focus
+        
         XSetInputFocus(display_.get(), event.window, RevertToPointerRoot, CurrentTime);
         
-        // Update layout engine focus state
+        
         layout_engine_->focusWindow(event.window);
         layout_engine_->updateBorderColors();
         
-        // Remember as last focused window for this workspace
+        
         workspace_last_focus_[current_workspace_] = event.window;
         
-        // Flush to ensure immediate visual feedback
+        
         XFlush(display_.get());
     }
 }
 
 void WindowManager::handleFocusIn(const XFocusChangeEvent& event) {
-    // Ignore certain focus modes
+    
     if (event.mode == NotifyGrab || event.mode == NotifyUngrab ||
         event.mode == NotifyWhileGrabbed) {
         return;
@@ -1105,30 +1483,30 @@ void WindowManager::handleFocusIn(const XFocusChangeEvent& event) {
     if (it != clients_.end()) {
         int window_workspace = it->second->getWorkspace();
         
-        // If the window is on a different workspace, switch to it automatically
-        // This handles external focus requests (e.g., Alt+Tab, taskbar clicks)
+        
+        
         if (window_workspace != current_workspace_) {
-            // Switch to the window's workspace without triggering another focus event
+            
             int target_ws = window_workspace;
             
-            // Hide windows on current workspace
+            
             hideWorkspaceWindows(current_workspace_);
             
-            // Update current workspace
+            
             current_workspace_ = target_ws;
             layout_engine_->setCurrentWorkspace(target_ws);
             
-            // Show windows on new workspace
+            
             showWorkspaceWindows(target_ws);
             
-            // Apply layout for new workspace
+            
             applyLayout();
             
-            // Flush to ensure all changes are committed
+            
             XFlush(display_.get());
         }
         
-        // Now handle the focus for the current workspace
+        
         layout_engine_->focusWindow(event.window);
         layout_engine_->updateBorderColors();
         workspace_last_focus_[current_workspace_] = event.window;
@@ -1138,16 +1516,16 @@ void WindowManager::handleFocusIn(const XFocusChangeEvent& event) {
 void WindowManager::handlePropertyNotify(const XPropertyEvent& event) {
     auto it = clients_.find(event.window);
     if (it != clients_.end()) {
-        // Window properties changed - could update title, class, etc.
+        
     }
 }
 
 void WindowManager::applyLayout() {
-    // Get screen dimensions
+    
     int screen_width = DisplayWidth(display_.get(), screen_);
     int screen_height = DisplayHeight(display_.get(), screen_);
     
-    // Get combined struts from all dock windows
+    
     unsigned long left_strut = 0, right_strut = 0, top_strut = 0, bottom_strut = 0;
     
     if (ewmh_manager_) {
@@ -1157,12 +1535,12 @@ void WindowManager::applyLayout() {
         top_strut = struts.top;
         bottom_strut = struts.bottom;
         
-        // Update _NET_WORKAREA with the reserved space
+        
         ewmh_manager_->updateWorkarea(screen_width, screen_height,
                                       left_strut, right_strut, top_strut, bottom_strut);
     }
     
-    // Calculate usable area (screen minus reserved struts)
+    
     Rect screen_bounds{
         static_cast<int>(left_strut), 
         static_cast<int>(top_strut),
@@ -1170,6 +1548,17 @@ void WindowManager::applyLayout() {
         static_cast<unsigned int>(screen_height - top_strut - bottom_strut)
     };
     
+    
+    
+    std::unordered_set<Window> floating_windows;
+    for (const auto& [window, client] : clients_) {
+        if (client->getWorkspace() == current_workspace_ && client->isFloating()) {
+            floating_windows.insert(window);
+        }
+    }
+    
+    
+    layout_engine_->setFloatingWindows(floating_windows);
     
     layout_engine_->applyLayout(current_workspace_, screen_bounds);
 }
@@ -1188,17 +1577,17 @@ bool WindowManager::loadConfigSafe() {
 
 void WindowManager::fallbackToDefaultConfig() {
     
-    // Load embedded config
+    
     if (!config_parser_->loadFromString(ConfigParser::getEmbeddedConfig())) {
         std::cerr << "[ERROR] Failed to parse embedded config!" << std::endl;
         return;
     }
     
     
-    // Apply the config to the layout engine
+    
     applyConfigToLayout();
     
-    // Register keybinds from embedded config
+    
     if (keybind_manager_) {
         keybind_manager_->clearKeybinds();
         const auto& config = config_parser_->getConfig();
@@ -1206,14 +1595,14 @@ void WindowManager::fallbackToDefaultConfig() {
             std::string keybind_str;
             std::string action;
             
-            // Build keybind string from modifiers + key
+            
             if (!bind.modifiers.empty()) {
                 keybind_str = bind.modifiers + ", " + bind.key;
             } else {
                 keybind_str = bind.key;
             }
             
-            // Handle exec commands
+            
             if (bind.exec_command.has_value()) {
                 action = "exec: " + *bind.exec_command;
             } else {
@@ -1223,7 +1612,7 @@ void WindowManager::fallbackToDefaultConfig() {
             keybind_manager_->registerKeybind(keybind_str, action);
         }
         
-        // Grab the keys
+        
         if (display_ && root_ != None) {
             keybind_manager_->grabKeys(display_.get(), root_);
         }
@@ -1234,13 +1623,13 @@ void WindowManager::applyConfigToLayout() {
     const auto& config = config_parser_->getConfig();
     
     
-    // Apply focus behavior
+    
     focus_follows_mouse_ = config.focus_follows_mouse;
     
-    // Apply monitor focus behavior
+    
     monitor_focus_follows_mouse_ = config.monitor_focus_follows_mouse;
     
-    // Initialize current monitor if monitor focus is enabled
+    
     if (monitor_focus_follows_mouse_ && monitor_manager_) {
         monitor_manager_->refresh();
         Window root_return, child_return;
@@ -1256,25 +1645,25 @@ void WindowManager::applyConfigToLayout() {
         }
     }
 
-    // Apply workspace configuration
+    
     infinite_workspaces_ = config.workspaces.infinite;
     max_workspaces_ = config.workspaces.max_workspaces;
     dynamic_workspace_creation_ = config.workspaces.dynamic_creation;
     auto_remove_empty_workspaces_ = config.workspaces.auto_remove;
     min_persist_workspaces_ = config.workspaces.min_persist;
     
-    // Apply multi-monitor workspace configuration
+    
     per_monitor_workspaces_ = config.workspaces.per_monitor;
     virtual_workspace_mapping_ = config.workspaces.virtual_mapping;
     workspace_to_monitor_ = config.workspaces.workspace_to_monitor;
     
     
     if (!workspace_to_monitor_.empty()) {
-        for (const auto& [ws, mon] : workspace_to_monitor_) {
+        for ([[maybe_unused]] const auto& [ws, mon] : workspace_to_monitor_) {
         }
     }
     
-    // Initialize per-monitor focus tracking for per-monitor workspaces
+    
     if (per_monitor_workspaces_ && monitor_manager_) {
         size_t monitor_count = monitor_manager_->getMonitorCount();
         per_monitor_last_focus_.resize(monitor_count);
@@ -1283,37 +1672,44 @@ void WindowManager::applyConfigToLayout() {
         }
     }
     
-    // Resize workspace tracking if needed
+    
     if (!infinite_workspaces_ && workspace_last_focus_.size() < static_cast<size_t>(max_workspaces_)) {
         workspace_last_focus_.resize(max_workspaces_, None);
     }
 
-    // Apply drag configuration
     
-    // Apply windows configuration
+    
+    
     auto_resize_non_docks_ = config.windows.auto_resize_non_docks;
     floating_resize_enabled_ = config.windows.floating_resize_enabled;
     floating_resize_edge_size_ = config.windows.floating_resize_edge_size;
     
 
-    // Apply default layout settings
-    // Gap size and border width are set via config file values
-    // Default values are used if not specified
+    
+    
+    
+    
+    int top_gap = config.layout_gaps.top_gap == 0 ? -1 : config.layout_gaps.top_gap;
+    int bottom_gap = config.layout_gaps.bottom_gap == 0 ? -1 : config.layout_gaps.bottom_gap;
+    int left_gap = config.layout_gaps.left_gap == 0 ? -1 : config.layout_gaps.left_gap;
+    int right_gap = config.layout_gaps.right_gap == 0 ? -1 : config.layout_gaps.right_gap;
+    
     layout_engine_->setGapSize(config.layout_gaps.inner_gap);
     layout_engine_->setOuterGap(config.layout_gaps.outer_gap);
     layout_engine_->setEdgeGaps(
-        config.layout_gaps.top_gap,
-        config.layout_gaps.bottom_gap,
-        config.layout_gaps.left_gap,
-        config.layout_gaps.right_gap
+        top_gap,
+        bottom_gap,
+        left_gap,
+        right_gap
     );
-    layout_engine_->setBorderWidth(2);  // Default border
+    layout_engine_->setBorderWidth(2);  
     
-    // Parse border colors from config and apply them
-    unsigned long focused_color = 0x00FF00;   // Default green
-    unsigned long unfocused_color = 0x333333; // Default gray
     
-    // Parse focused color
+    
+    unsigned long focused_color = 0x89B4FA;    
+    unsigned long unfocused_color = 0x45475A;  
+    
+    
     if (!config.borders.focused_color.empty()) {
         try {
             std::string hex = config.borders.focused_color;
@@ -1326,7 +1722,7 @@ void WindowManager::applyConfigToLayout() {
         }
     }
     
-    // Parse unfocused color
+    
     if (!config.borders.unfocused_color.empty()) {
         try {
             std::string hex = config.borders.unfocused_color;
@@ -1345,15 +1741,15 @@ void WindowManager::applyConfigToLayout() {
 void WindowManager::setupConfigWatcher() {
     config_watcher_ = std::make_unique<ConfigWatcher>();
     
-    // Get config directory path
+    
     auto config_path = ConfigParser::getDefaultConfigPath();
     auto config_dir = config_path.parent_path();
     
-    // Set up validation callback
+    
     config_watcher_->setValidationCallback([this](const std::filesystem::path& path) {
         ValidationResult result;
         
-        // Basic syntax validation
+        
         std::ifstream file(path);
         if (!file.is_open()) {
             result.success = false;
@@ -1397,19 +1793,19 @@ void WindowManager::setupConfigWatcher() {
         return result;
     });
     
-    // Set up apply callback
+    
     config_watcher_->setApplyCallback([this](const std::filesystem::path& path) {
         
-        // Reload configuration
+        
         if (loadConfigSafe()) {
-            // Clear any previous config errors on success
+            
             toaster_->clearConfigErrors();
             
             applyConfigToLayout();
             applyLayout();
             layout_engine_->updateBorderColors();
             
-            // Re-register keybinds from config only
+            
             keybind_manager_->clearKeybinds();
             const auto& config = config_parser_->getConfig();
             for (const auto& bind : config.keybinds) {
@@ -1435,9 +1831,9 @@ void WindowManager::setupConfigWatcher() {
         return false;
     });
     
-    // Set up error callback
+    
     config_watcher_->setErrorCallback([this](const ValidationResult& result) {
-        // Clear previous config errors first
+        
         toaster_->clearConfigErrors();
         
         for (const auto& err : result.errors) {
@@ -1448,7 +1844,7 @@ void WindowManager::setupConfigWatcher() {
         }
     });
     
-    // Set up notification callback
+    
     config_watcher_->setNotifyCallback([this](const std::string& message, const std::string& level) {
         if (level == "info") {
             toaster_->info(message);
@@ -1459,12 +1855,12 @@ void WindowManager::setupConfigWatcher() {
         }
     });
     
-    // Start watching the config directory
+    
     if (!config_watcher_->addWatch(config_dir)) {
         std::cerr << "Failed to add config watch" << std::endl;
     }
     
-    // Start the watcher thread
+    
     if (!config_watcher_->start()) {
         std::cerr << "Failed to start config watcher thread" << std::endl;
     } else {
@@ -1484,20 +1880,20 @@ void WindowManager::reloadConfig() {
     }
 }
 
-// ============================================================================
-// Workspace Management
-// ============================================================================
+
+
+
 
 void WindowManager::switchWorkspace(int workspace) {
-    // Convert from 1-indexed to 0-indexed if needed
+    
     int target_ws = (workspace > 0) ? workspace - 1 : workspace;
     
-    // Check workspace bounds
+    
     if (target_ws < 0) {
         return;
     }
     
-    // For non-infinite mode, check upper bound
+    
     if (!infinite_workspaces_ && target_ws >= max_workspaces_) {
         return;
     }
@@ -1507,37 +1903,34 @@ void WindowManager::switchWorkspace(int workspace) {
     }
     
 
-    // Auto-remove empty workspace if enabled (only if leaving an empty workspace)
+    
     if (auto_remove_empty_workspaces_ && current_workspace_ >= min_persist_workspaces_) {
         int window_count = getWorkspaceWindowCount(current_workspace_);
         if (window_count == 0 && current_workspace_ > highest_used_workspace_) {
-            // Shrink workspace_last_focus_ if needed
+            
             if (workspace_last_focus_.size() > static_cast<size_t>(current_workspace_ + 1)) {
                 workspace_last_focus_.resize(current_workspace_ + 1);
             }
         }
     }
     
-    // Expand tracking vectors if needed for infinite workspaces
+    
     if (infinite_workspaces_ && target_ws >= static_cast<int>(workspace_last_focus_.size())) {
-        workspace_last_focus_.resize(target_ws + 10, None);  // Pre-allocate extra space
+        workspace_last_focus_.resize(target_ws + 10, None);  
     }
     
-    // Update highest used workspace
+    
     if (target_ws > highest_used_workspace_) {
         highest_used_workspace_ = target_ws;
     }
-
-    // Notify
-    toaster_->info("Workspace " + std::to_string(target_ws + 1));
     
-    // Store current focused window for this workspace
+    
     Window current_focus = layout_engine_->getFocusedWindow();
     if (current_focus != None) {
         workspace_last_focus_[current_workspace_] = current_focus;
     }
     
-    // Workspace operations
+    
     hideWorkspaceWindows(current_workspace_);
     current_workspace_ = target_ws;
     layout_engine_->setCurrentWorkspace(target_ws);
@@ -1546,36 +1939,36 @@ void WindowManager::switchWorkspace(int workspace) {
     updateFocusAfterSwitch();
     layout_engine_->updateBorderColors();
     
-    // Update EWMH current desktop
+    
     updateEWMHCurrentWorkspace();
     
-    // Update external status bar properties
+    
     updateExternalBarWorkspace();
     
-    // Single final sync to ensure everything is committed
+    
     XSync(display_.get(), False);
 }
 
 void WindowManager::moveWindowToWorkspace(int workspace, bool follow) {
-    // Convert from 1-indexed to 0-indexed if needed
+    
     int target_ws = (workspace > 0) ? workspace - 1 : workspace;
     
-    // Check workspace bounds
+    
     if (target_ws < 0) {
         return;
     }
     
-    // For non-infinite mode, check upper bound
+    
     if (!infinite_workspaces_ && target_ws >= max_workspaces_) {
         return;
     }
     
-    // Expand tracking vectors if needed for infinite workspaces
+    
     if (infinite_workspaces_ && target_ws >= static_cast<int>(workspace_last_focus_.size())) {
         workspace_last_focus_.resize(target_ws + 10, None);
     }
     
-    // Update highest used workspace
+    
     if (target_ws > highest_used_workspace_) {
         highest_used_workspace_ = target_ws;
     }
@@ -1600,28 +1993,28 @@ void WindowManager::moveWindowToWorkspace(int workspace, bool follow) {
         toaster_->info("Moved to workspace " + std::to_string(target_ws + 1));
     }
 
-    // Remove from current workspace's BSP tree
+    
     Window next_focus = layout_engine_->removeWindow(focused);
     
-    // Update window's workspace
+    
     it->second->setWorkspace(target_ws);
     
-    // Hide the window (it's not on current workspace anymore)
-    // Register as pending unmap BEFORE calling XUnmapWindow to prevent
-    // handleUnmapNotify from unmanaging the window
+    
+    
+    
     if (!follow && target_ws != current_workspace_) {
         it->second->setHidden(true);
         pending_unmaps_.insert(focused);
         XUnmapWindow(display_.get(), focused);
     }
     
-    // Switch layout engine to target workspace and add window
+    
     int prev_ws = layout_engine_->getCurrentWorkspace();
     layout_engine_->setCurrentWorkspace(target_ws);
     layout_engine_->addWindow(focused);
     layout_engine_->setCurrentWorkspace(prev_ws);
     
-    // Update focus on old workspace
+    
     if (next_focus != None) {
         auto next_it = clients_.find(next_focus);
         if (next_it != clients_.end() && next_it->second->getWorkspace() == current_workspace_) {
@@ -1630,16 +2023,16 @@ void WindowManager::moveWindowToWorkspace(int workspace, bool follow) {
         }
     }
     
-    // Store as last focus for target workspace
+    
     workspace_last_focus_[target_ws] = focused;
     
-    // Reapply layout
+    
     applyLayout();
     layout_engine_->updateBorderColors();
     
-    // If following, switch to the target workspace
+    
     if (follow) {
-        switchWorkspace(target_ws + 1);  // switchWorkspace expects 1-indexed
+        switchWorkspace(target_ws + 1);  
     }
 }
 
@@ -1658,16 +2051,16 @@ void WindowManager::hideWorkspaceWindows(int workspace) {
 void WindowManager::showWorkspaceWindows(int workspace) {
     std::vector<Window> windows_to_show;
     
-    // Collect all windows on this workspace that should be visible
-    // Note: We show windows regardless of hidden state to handle initial workspace switch
-    // where windows were never hidden in the first place
+    
+    
+    
     for (auto& [window, managed] : clients_) {
         if (managed->getWorkspace() == workspace) {
             windows_to_show.push_back(window);
         }
     }
     
-    // Map and raise all windows
+    
     for (Window window : windows_to_show) {
         auto it = clients_.find(window);
         if (it != clients_.end()) {
@@ -1677,8 +2070,8 @@ void WindowManager::showWorkspaceWindows(int workspace) {
         }
     }
     
-    // Use XSync(False) to flush the output buffer and wait for X server processing
-    // WITHOUT discarding events (XSync(True) discards events which breaks our event loop)
+    
+    
     XSync(display_.get(), False);
 }
 
@@ -1690,13 +2083,33 @@ void WindowManager::updateFocusAfterSwitch() {
         layout_engine_->focusWindow(to_focus);
         workspace_last_focus_[current_workspace_] = to_focus;
     } else {
-        // No windows on this workspace, focus root
+        
         XSetInputFocus(display_.get(), root_, RevertToPointerRoot, CurrentTime);
     }
+    
+    
+    updateAllBorders();
+}
+
+void WindowManager::updateAllBorders() {
+    
+    layout_engine_->updateBorderColors();
+    
+    
+    Window focused = getFocusedWindow();
+    for (const auto& [window, managed] : clients_) {
+        if (managed->getWorkspace() == current_workspace_ && managed->isFloating()) {
+            unsigned long color = (window == focused) ? 
+                layout_engine_->getFocusedBorderColor() : 
+                layout_engine_->getUnfocusedBorderColor();
+            XSetWindowBorder(display_.get(), window, color);
+        }
+    }
+    XFlush(display_.get());
 }
 
 Window WindowManager::findWindowToFocus(int workspace) {
-    // First try the last focused window for this workspace
+    
     Window last = workspace_last_focus_[workspace];
     if (last != None) {
         auto it = clients_.find(last);
@@ -1705,7 +2118,7 @@ Window WindowManager::findWindowToFocus(int workspace) {
         }
     }
     
-    // Find any window on this workspace
+    
     for (auto& [window, managed] : clients_) {
         if (managed->getWorkspace() == workspace) {
             return window;
@@ -1725,28 +2138,28 @@ int WindowManager::getWorkspaceWindowCount(int workspace) const {
     return count;
 }
 
-// ============================================================================
-// Multi-Monitor Workspace Management
-// ============================================================================
+
+
+
 
 void WindowManager::switchWorkspaceOnMonitor(int workspace, int monitor_id) {
-    // Convert from 1-indexed to 0-indexed if needed
+    
     int target_ws = (workspace > 0) ? workspace - 1 : workspace;
     
-    // Check workspace bounds
+    
     if (target_ws < 0) {
         return;
     }
     
-    // For non-infinite mode, check upper bound
+    
     if (!infinite_workspaces_ && target_ws >= max_workspaces_) {
         return;
     }
     
-    // Update current monitor
+    
     current_monitor_ = monitor_id;
     
-    // If virtual mapping is enabled, check if this workspace should be on this monitor
+    
     if (virtual_workspace_mapping_) {
         auto it = workspace_to_monitor_.find(target_ws);
         if (it != workspace_to_monitor_.end() && it->second != monitor_id) {
@@ -1755,16 +2168,16 @@ void WindowManager::switchWorkspaceOnMonitor(int workspace, int monitor_id) {
         }
     }
     
-    // For per-monitor workspaces, we need to adjust the workspace index
+    
     if (per_monitor_workspaces_) {
-        // In per-monitor mode, workspace index is relative to the monitor
-        // So workspace 0 on monitor 0 is different from workspace 0 on monitor 1
+        
+        
         int monitor_count = monitor_manager_ ? static_cast<int>(monitor_manager_->getMonitorCount()) : 1;
-        (void)monitor_count;  // Reserved for future use
+        (void)monitor_count;  
         target_ws = target_ws + (monitor_id * max_workspaces_);
     }
     
-    switchWorkspace(target_ws + 1);  // switchWorkspace expects 1-indexed
+    switchWorkspace(target_ws + 1);  
 }
 
 void WindowManager::setCurrentMonitor(int monitor_id) {
@@ -1773,12 +2186,12 @@ void WindowManager::setCurrentMonitor(int monitor_id) {
         if (monitor_id >= 0 && monitor_id < static_cast<int>(monitor_count)) {
             current_monitor_ = monitor_id;
             
-            // If per-monitor workspaces and virtual mapping enabled,
-            // switch to the workspace mapped to this monitor
+            
+            
             if (per_monitor_workspaces_ || virtual_workspace_mapping_) {
                 for (const auto& [ws, mon] : workspace_to_monitor_) {
                     if (mon == monitor_id) {
-                        // Found a workspace mapped to this monitor
+                        
                         switchWorkspace(ws + 1);
                         break;
                     }
@@ -1789,7 +2202,7 @@ void WindowManager::setCurrentMonitor(int monitor_id) {
 }
 
 void WindowManager::mapWorkspaceToMonitor(int workspace, int monitor_id) {
-    // Convert from 1-indexed to 0-indexed if needed
+    
     int ws = (workspace > 0) ? workspace - 1 : workspace;
     
     if (ws >= 0 && monitor_id >= 0) {
@@ -1799,19 +2212,19 @@ void WindowManager::mapWorkspaceToMonitor(int workspace, int monitor_id) {
 }
 
 int WindowManager::getWorkspaceMonitor(int workspace) const {
-    // Convert from 1-indexed to 0-indexed if needed
+    
     int ws = (workspace > 0) ? workspace - 1 : workspace;
     
     auto it = workspace_to_monitor_.find(ws);
     if (it != workspace_to_monitor_.end()) {
         return it->second;
     }
-    return -1;  // Not mapped
+    return -1;  
 }
 
-// ============================================================================
-// Focus Navigation
-// ============================================================================
+
+
+
 
 void WindowManager::moveFocus(const std::string& direction) {
     Window next = layout_engine_->moveFocus(direction);
@@ -1823,7 +2236,7 @@ void WindowManager::moveFocus(const std::string& direction) {
             workspace_last_focus_[current_workspace_] = next;
             layout_engine_->updateBorderColors();
             
-            // Warp pointer to the newly focused window
+            
             is_warping_ = true;
             layout_engine_->warpPointerToWindow(next);
         }
@@ -1838,14 +2251,14 @@ void WindowManager::focusWindow(Window window) {
         workspace_last_focus_[current_workspace_] = window;
         layout_engine_->updateBorderColors();
         
-        // Update external status bar with new window title
+        
         updateExternalBarActiveWindow();
     }
 }
 
-// ============================================================================
-// Window Movement (within workspace)
-// ============================================================================
+
+
+
 
 void WindowManager::swapFocusedWindow(const std::string& direction) {
     layout_engine_->swapFocused(direction);
@@ -1853,9 +2266,9 @@ void WindowManager::swapFocusedWindow(const std::string& direction) {
     layout_engine_->updateBorderColors();
 }
 
-// ============================================================================
-// Window Resizing
-// ============================================================================
+
+
+
 
 void WindowManager::resizeFocusedWindow(const std::string& direction) {
     double delta = 0.0;
@@ -1880,9 +2293,9 @@ void WindowManager::resizeFocusedWindow(double delta) {
     applyLayout();
 }
 
-// ============================================================================
-// Window State
-// ============================================================================
+
+
+
 
 void WindowManager::toggleFloating() {
     Window focused = layout_engine_->getFocusedWindow();
@@ -1899,22 +2312,22 @@ void WindowManager::toggleFloating() {
     it->second->setFloating(!is_floating);
     
     if (!is_floating) {
-        // Switching to floating - store tiled geometry and allow free positioning
+        
         int x, y;
         unsigned int w, h;
         it->second->getGeometry(x, y, w, h);
         it->second->storeTiledGeometry(x, y, w, h);
         
-        // Raise the window
+        
         XRaiseWindow(display_.get(), focused);
         toaster_->info("Floating mode");
     } else {
-        // Switching back to tiled - restore tiled geometry
+        
         int x, y;
         unsigned int w, h;
         it->second->getTiledGeometry(x, y, w, h);
         
-        // Remove from BSP and re-add to get proper placement
+        
         layout_engine_->removeWindow(focused);
         layout_engine_->addWindow(focused);
         
@@ -1947,28 +2360,28 @@ void WindowManager::setFullscreen(Window window, bool fullscreen) {
     it->second->setFullscreen(fullscreen);
     
     if (fullscreen) {
-        // Save current geometry
+        
         int x, y;
         unsigned int w, h;
         it->second->getGeometry(x, y, w, h);
         it->second->storeTiledGeometry(x, y, w, h);
         
-        // Make fullscreen
+        
         int screen_width = DisplayWidth(display_.get(), screen_);
         int screen_height = DisplayHeight(display_.get(), screen_);
         
-        // Remove border
+        
         XWindowChanges changes;
         changes.border_width = 0;
         XConfigureWindow(display_.get(), window, CWBorderWidth, &changes);
         
-        // Resize to screen
+        
         XMoveResizeWindow(display_.get(), window, 0, 0, screen_width, screen_height);
         
-        // Raise above all
+        
         XRaiseWindow(display_.get(), window);
         
-        // Set _NET_WM_STATE_FULLSCREEN
+        
         Atom wm_state = XInternAtom(display_.get(), "_NET_WM_STATE", False);
         Atom fullscreen_atom = XInternAtom(display_.get(), "_NET_WM_STATE_FULLSCREEN", False);
         
@@ -1978,37 +2391,111 @@ void WindowManager::setFullscreen(Window window, bool fullscreen) {
         
         toaster_->info("Fullscreen");
     } else {
-        // Restore from fullscreen
+        
         int x, y;
         unsigned int w, h;
         it->second->getTiledGeometry(x, y, w, h);
         
-        // Restore border
+        
         XWindowChanges changes;
-        changes.border_width = 2;  // Default border width
+        changes.border_width = 2;  
         XConfigureWindow(display_.get(), window, CWBorderWidth, &changes);
         
-        // Remove _NET_WM_STATE_FULLSCREEN
+        
         Atom wm_state = XInternAtom(display_.get(), "_NET_WM_STATE", False);
         XDeleteProperty(display_.get(), window, wm_state);
         
-        // Re-apply layout
+        
         applyLayout();
     }
     
     XFlush(display_.get());
 }
 
-// ============================================================================
-// Layout Management
-// ============================================================================
+
+
+
+
+void WindowManager::showScratchpad() {
+    if (!scratchpad_manager_ || scratchpad_manager_->count() == 0) {
+        return;
+    }
+    
+    
+    if (!scratchpad_manager_->getWindows().empty()) {
+        
+        scratchpad_manager_->showScratchpad();
+    }
+}
+
+void WindowManager::showScratchpadNext() {
+    if (!scratchpad_manager_) {
+        return;
+    }
+    scratchpad_manager_->showScratchpadNext();
+}
+
+void WindowManager::showScratchpadPrevious() {
+    if (!scratchpad_manager_) {
+        return;
+    }
+    scratchpad_manager_->showScratchpadPrevious();
+}
+
+void WindowManager::hideToScratchpad() {
+    if (!scratchpad_manager_) {
+        return;
+    }
+    
+    Window focused = layout_engine_->getFocusedWindow();
+    if (focused == None) {
+        return;
+    }
+    
+    auto it = clients_.find(focused);
+    if (it == clients_.end()) {
+        return;
+    }
+    
+    
+    int x, y;
+    unsigned int width, height;
+    it->second->getGeometry(x, y, width, height);
+    
+    
+    int workspace = it->second->getWorkspace();
+    
+    
+    bool was_floating = it->second->isFloating();
+    
+    
+    scratchpad_manager_->hideToScratchpad(focused, workspace, x, y, width, height, was_floating);
+    
+    
+    unmanageWindow(focused);
+    
+    
+    applyLayout();
+}
+
+
+
+
 
 void WindowManager::setLayout(const std::string& layout_name) {
     std::unique_ptr<LayoutVisitor> layout;
     
+    
+    int gap_size = 10;
+    if (layout_engine_) {
+        
+        
+        gap_size = layout_engine_->getGapSize();
+    }
+    
     if (layout_name == "bsp") {
         BSPLayout::Config config;
-        config.gap_size = 10;
+        config.gap_size = gap_size;  
         config.border_width = 2;
         
         layout = std::make_unique<BSPLayout>(config);
@@ -2019,27 +2506,27 @@ void WindowManager::setLayout(const std::string& layout_name) {
     } else if (layout_name == "masterstack") {
         MasterStackLayout::Config config;
         config.master_ratio = 0.55;
-        config.gap_size = 10;
+        config.gap_size = gap_size;  
         config.max_master = 1;
         config.border_width = 2;
-        config.focused_border_color = 0x00FF00;
-        config.unfocused_border_color = 0x808080;
+        config.focused_border_color = 0x89B4FA;   
+        config.unfocused_border_color = 0x45475A; 
         
         layout = std::make_unique<MasterStackLayout>(config);
         toaster_->info("Master-Stack Layout");
     } else if (layout_name == "centered_master" || layout_name == "centered-master") {
         CenteredMasterLayout::Config config;
-        config.gap_size = 10;
+        config.gap_size = gap_size;  
         layout = std::make_unique<CenteredMasterLayout>(config);
         toaster_->info("Centered Master Layout");
     } else if (layout_name == "dynamic_grid" || layout_name == "dynamic-grid") {
         DynamicGridLayout::Config config;
-        config.gap_size = 10;
+        config.gap_size = gap_size;  
         layout = std::make_unique<DynamicGridLayout>(config);
         toaster_->info("Dynamic Grid Layout");
     } else if (layout_name == "dwindle_spiral" || layout_name == "dwindle-spiral") {
         DwindleSpiralLayout::Config config;
-        config.gap_size = 10;
+        config.gap_size = gap_size;  
         layout = std::make_unique<DwindleSpiralLayout>(config);
         toaster_->info("Dwindle Spiral Layout");
     } else if (layout_name == "tabbed_stacked" || layout_name == "tabbed-stacked" 
@@ -2055,12 +2542,12 @@ void WindowManager::setLayout(const std::string& layout_name) {
     applyLayout();
     layout_engine_->updateBorderColors();
     
-    // Update external status bar with new layout mode
+    
     updateExternalBarLayoutMode();
 }
 
 void WindowManager::cycleLayoutNext() {
-    // Determine direction based on configuration
+    
     bool forward = true;
     if (layout_config_parser_) {
         const auto& config = layout_config_parser_->getConfig();
@@ -2074,7 +2561,7 @@ void WindowManager::cycleLayoutNext() {
 }
 
 void WindowManager::cycleLayoutPrev() {
-    // Determine direction based on configuration (opposite of next)
+    
     bool backward = true;
     if (layout_config_parser_) {
         const auto& config = layout_config_parser_->getConfig();
@@ -2092,22 +2579,22 @@ void WindowManager::toggleSplitDirection() {
     applyLayout();
 }
 
-// ============================================================================
-// Utility Methods
-// ============================================================================
+
+
+
 
 void WindowManager::execCommand(const std::string& command) {
     
     pid_t pid = fork();
     if (pid == 0) {
-        // Child process
+        
         setsid();
         
-        // Convert command to args
+        
         std::string cmd = command;
         execl("/bin/sh", "/bin/sh", "-c", cmd.c_str(), nullptr);
         
-        // If exec fails
+        
         _exit(1);
     }
 }
@@ -2120,12 +2607,12 @@ void WindowManager::killActiveWindow() {
     }
     
     
-    // Try graceful close first using WM_DELETE_WINDOW
+    
     Atom wm_protocols = XInternAtom(display_.get(), "WM_PROTOCOLS", True);
     Atom wm_delete = XInternAtom(display_.get(), "WM_DELETE_WINDOW", True);
     
     if (wm_protocols != None && wm_delete != None) {
-        // Check if window supports WM_DELETE_WINDOW
+        
         Atom* protocols;
         int num_protocols;
         
@@ -2140,7 +2627,7 @@ void WindowManager::killActiveWindow() {
             XFree(protocols);
             
             if (supports_delete) {
-                // Send WM_DELETE_WINDOW
+                
                 XEvent close_event;
                 memset(&close_event, 0, sizeof(close_event));
                 close_event.xclient.type = ClientMessage;
@@ -2157,7 +2644,7 @@ void WindowManager::killActiveWindow() {
         }
     }
     
-    // Fallback: force kill with XKillClient
+    
     XKillClient(display_.get(), focused);
 }
 
@@ -2183,9 +2670,9 @@ int WindowManager::onWMDetected(Display* display, XErrorEvent* error) {
     return 0;
 }
 
-// ============================================================================
-// EWMH Helper Methods Implementation
-// ============================================================================
+
+
+
 
 void WindowManager::updateEWMHClientList() {
     if (!ewmh_manager_) return;
@@ -2209,17 +2696,17 @@ void WindowManager::updateEWMHActiveWindow(Window window) {
 void WindowManager::updateEWMHWorkspaceCount() {
     if (!ewmh_manager_) return;
     
-    // Calculate workspace count - use at least max_workspaces_ or current+1 for infinite mode
+    
     int count;
     if (infinite_workspaces_) {
-        // For infinite workspaces, show at least the current workspace + 1, or highest used + 1
+        
         count = std::max({highest_used_workspace_ + 1, current_workspace_ + 1, max_workspaces_});
     } else {
         count = max_workspaces_;
     }
     ewmh_manager_->setNumberOfDesktops(count);
     
-    // Set desktop names
+    
     std::vector<std::string> names;
     for (int i = 0; i < count; ++i) {
         names.push_back(std::to_string(i + 1));
@@ -2258,9 +2745,9 @@ void WindowManager::updateEWMHWindowState(Window window) {
     ewmh_manager_->setWindowState(window, states);
 }
 
-// ============================================================================
-// External Status Bar Property Updates
-// ============================================================================
+
+
+
 
 void WindowManager::updateExternalBarProperties() {
     updateExternalBarWorkspace();
@@ -2271,10 +2758,10 @@ void WindowManager::updateExternalBarProperties() {
 void WindowManager::updateExternalBarWorkspace() {
     if (!ewmh_manager_) return;
     
-    // Update current workspace
+    
     ewmh_manager_->setCurrentWorkspacePB(current_workspace_);
     
-    // Build list of occupied workspaces
+    
     std::vector<int> occupied;
     for (const auto& [window, client] : clients_) {
         int ws = client->getWorkspace();
@@ -2284,7 +2771,7 @@ void WindowManager::updateExternalBarWorkspace() {
     }
     ewmh_manager_->setOccupiedWorkspacesPB(occupied);
     
-    // Build window count per workspace
+    
     int total_workspaces = infinite_workspaces_ ? 
         std::max(highest_used_workspace_ + 1, current_workspace_ + 1) : 
         max_workspaces_;
@@ -2318,7 +2805,7 @@ void WindowManager::updateExternalBarActiveWindow() {
 void WindowManager::updateExternalBarLayoutMode() {
     if (!ewmh_manager_) return;
     
-    // Get current layout mode from layout engine
+    
     auto layout_mode = layout_engine_->getCurrentLayoutMode(current_workspace_);
     
     std::string layout_name;
@@ -2352,21 +2839,29 @@ void WindowManager::updateExternalBarLayoutMode() {
     }
     
     ewmh_manager_->setLayoutModePB(layout_name);
+    
+    
+    std::filesystem::create_directories("/tmp/pointblank");
+    std::ofstream layout_file("/tmp/pointblank/currentlayout");
+    if (layout_file.is_open()) {
+        layout_file << layout_name << std::endl;
+        layout_file.close();
+    }
 }
 
-// ============================================================================
-// ManagedWindow Implementation
-// ============================================================================
+
+
+
 
 ManagedWindow::ManagedWindow(Window window, Display* display)
     : window_(window), display_(display) {
-    // Get initial geometry
+    
     Window root;
     unsigned int border_width, depth;
     XGetGeometry(display_, window_, &root, &x_, &y_, &width_, &height_,
                  &border_width, &depth);
     
-    // Store as tiled geometry initially
+    
     tiled_x_ = x_;
     tiled_y_ = y_;
     tiled_width_ = width_;
@@ -2433,4 +2928,4 @@ void ManagedWindow::getTiledGeometry(int& x, int& y, unsigned int& width, unsign
     height = tiled_height_;
 }
 
-} // namespace pblank
+} 

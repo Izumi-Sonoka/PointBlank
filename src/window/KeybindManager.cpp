@@ -17,7 +17,7 @@ KeybindManager::KeybindManager() = default;
 
 void KeybindManager::registerKeybind(const std::string& keybind_string, 
                                      const std::string& action) {
-    // Parse keybind string format: "SUPER, SHIFT, Q" or "SUPER, Q"
+    
     std::string modifiers_str;
     std::string key_str;
     
@@ -26,13 +26,13 @@ void KeybindManager::registerKeybind(const std::string& keybind_string,
         modifiers_str = keybind_string.substr(0, last_comma);
         key_str = keybind_string.substr(last_comma + 1);
         
-        // Trim whitespace
+        
         modifiers_str.erase(0, modifiers_str.find_first_not_of(" \t"));
         modifiers_str.erase(modifiers_str.find_last_not_of(" \t") + 1);
         key_str.erase(0, key_str.find_first_not_of(" \t"));
         key_str.erase(key_str.find_last_not_of(" \t") + 1);
     } else {
-        // No modifiers, just a key
+        
         key_str = keybind_string;
         key_str.erase(0, key_str.find_first_not_of(" \t"));
         key_str.erase(key_str.find_last_not_of(" \t") + 1);
@@ -43,30 +43,30 @@ void KeybindManager::registerKeybind(const std::string& keybind_string,
     bind.keysym = parseKey(key_str);
     bind.action = action;
     
-    // Check if this is an exec: directive
+    
     if (action.find("exec:") == 0) {
         bind.exec_command = action.substr(5);
-        // Trim whitespace and quotes
+        
         bind.exec_command.erase(0, bind.exec_command.find_first_not_of(" \t\""));
         bind.exec_command.erase(bind.exec_command.find_last_not_of(" \t\"") + 1);
     }
     
-    // Check for duplicate keybinds - remove existing one if found
-    // This ensures user-defined keybinds override any defaults
+    
+    
     auto it = std::remove_if(keybinds_.begin(), keybinds_.end(),
         [keysym = bind.keysym, mods = bind.modifiers](const Keybind& existing) {
             return existing.keysym == keysym && existing.modifiers == mods;
         });
     keybinds_.erase(it, keybinds_.end());
     
-    // Add the new keybind (at the end so it takes priority)
-    keybinds_.push_back(bind);
+    
+    keybinds_.emplace_back(std::move(bind));
     
 }
 
 void KeybindManager::registerDefaultKeybind(const std::string& keybind_string, 
                                              const std::string& action) {
-    // Parse keybind string format - same as registerKeybind
+    
     std::string modifiers_str;
     std::string key_str;
     
@@ -96,9 +96,9 @@ void KeybindManager::registerDefaultKeybind(const std::string& keybind_string,
         bind.exec_command.erase(bind.exec_command.find_last_not_of(" \t\"") + 1);
     }
     
-    // Add default keybinds without deduplication
-    // They have lower priority than user keybinds
-    keybinds_.push_back(bind);
+    
+    
+    keybinds_.emplace_back(std::move(bind));
     
 }
 
@@ -109,16 +109,16 @@ unsigned int KeybindManager::parseModifiers(const std::string& modifiers) {
         return mask;
     }
     
-    // Convert to uppercase for case-insensitive matching
+    
     std::string mod_upper = modifiers;
     std::transform(mod_upper.begin(), mod_upper.end(), mod_upper.begin(), ::toupper);
     
-    // Parse comma-separated modifiers
+    
     std::istringstream ss(mod_upper);
     std::string token;
     
     while (std::getline(ss, token, ',')) {
-        // Trim whitespace
+        
         token.erase(0, token.find_first_not_of(" \t"));
         token.erase(token.find_last_not_of(" \t") + 1);
         
@@ -152,11 +152,11 @@ KeySym KeybindManager::parseKey(const std::string& key) {
         return NoSymbol;
     }
     
-    // Convert to uppercase for consistency
+    
     std::string key_upper = key;
     std::transform(key_upper.begin(), key_upper.end(), key_upper.begin(), ::toupper);
     
-    // Map common key names
+    
     static const std::unordered_map<std::string, KeySym> key_map = {
         {"RETURN", XK_Return},
         {"ENTER", XK_Return},
@@ -176,17 +176,51 @@ KeySym KeybindManager::parseKey(const std::string& key) {
         {"UP", XK_Up},
         {"DOWN", XK_Down},
         
-        // Function keys
+        
         {"F1", XK_F1}, {"F2", XK_F2}, {"F3", XK_F3}, {"F4", XK_F4},
         {"F5", XK_F5}, {"F6", XK_F6}, {"F7", XK_F7}, {"F8", XK_F8},
         {"F9", XK_F9}, {"F10", XK_F10}, {"F11", XK_F11}, {"F12", XK_F12},
         
-        // Number keys (for workspace switching)
+        
         {"1", XK_1}, {"2", XK_2}, {"3", XK_3}, {"4", XK_4}, {"5", XK_5},
         {"6", XK_6}, {"7", XK_7}, {"8", XK_8}, {"9", XK_9}, {"0", XK_0},
         
-        // Special keys
+        
+        {"MINUS", XK_minus},
+        {"EQUAL", XK_equal},
+        {"-", XK_minus},
+        {"=", XK_equal},
+        
+        
         {"GRAVE", XK_grave},
+        {"COMMA", XK_comma},
+        {"PERIOD", XK_period},
+        {"BRACKETLEFT", XK_bracketleft},
+        {"BRACKETRIGHT", XK_bracketright},
+        {"PRINT", XK_Print},
+        {"SCROLLLOCK", XK_Scroll_Lock},
+        {"PAUSE", XK_Pause},
+        {"INSERT", XK_Insert},
+        {"DELETE", XK_Delete},
+        {"SUPER", XK_Super_L},
+        {"LSuper", XK_Super_L},
+        {"RSuper", XK_Super_R},
+        {"ALT", XK_Alt_L},
+        {"LAlt", XK_Alt_L},
+        {"RAlt", XK_Alt_R},
+        {"CTRL", XK_Control_L},
+        {"LCtrl", XK_Control_L},
+        {"RCtrl", XK_Control_R},
+        {"SHIFT", XK_Shift_L},
+        {"LShift", XK_Shift_L},
+        {"RShift", XK_Shift_R},
+        {"TAB", XK_Tab},
+        {"SPACE", XK_space},
+        {"RETURN", XK_Return},
+        {"ESCAPE", XK_Escape},
+        {"ESC", XK_Escape},
+        {"BACKSPACE", XK_BackSpace},
+        {"CAPS", XK_Caps_Lock},
     };
     
     auto it = key_map.find(key_upper);
@@ -194,9 +228,9 @@ KeySym KeybindManager::parseKey(const std::string& key) {
         return it->second;
     }
     
-    // For single character keys, use XStringToKeysym
+    
     if (key.length() == 1) {
-        // Map special characters to their X11 keysym names
+        
         static const std::unordered_map<char, const char*> char_to_keysym = {
             {'`', "grave"},
             {'~', "asciitilde"},
@@ -240,7 +274,7 @@ KeySym KeybindManager::parseKey(const std::string& key) {
             }
         }
         
-        // Only convert to lowercase for letter keys (a-z), not symbols
+        
         std::string lower_key = key;
         if (key[0] >= 'A' && key[0] <= 'Z') {
             std::transform(lower_key.begin(), lower_key.end(), lower_key.begin(), ::tolower);
@@ -251,7 +285,7 @@ KeySym KeybindManager::parseKey(const std::string& key) {
         }
     }
     
-    // Try direct XStringToKeysym lookup
+    
     KeySym ks = XStringToKeysym(key.c_str());
     if (ks != NoSymbol) {
         return ks;
@@ -262,7 +296,7 @@ KeySym KeybindManager::parseKey(const std::string& key) {
 }
 
 void KeybindManager::grabKeys(Display* display, Window root) {
-    // Ungrab all keys first to avoid conflicts
+    
     XUngrabKey(display, AnyKey, AnyModifier, root);
     
     for (const auto& bind : keybinds_) {
@@ -277,7 +311,7 @@ void KeybindManager::grabKeys(Display* display, Window root) {
             continue;
         }
         
-        // Grab with lock key combinations
+        
         grabKeyWithLocks(display, keycode, bind.modifiers, root);
     }
     
@@ -286,12 +320,12 @@ void KeybindManager::grabKeys(Display* display, Window root) {
 
 void KeybindManager::grabKeyWithLocks(Display* display, KeyCode keycode, 
                                       unsigned int modifiers, Window root) {
-    // Grab with different combinations to handle Num Lock and Caps Lock
+    
     unsigned int lock_modifiers[] = {
         0,
-        Mod2Mask,           // Num Lock
-        LockMask,           // Caps Lock
-        Mod2Mask | LockMask // Both
+        Mod2Mask,           
+        LockMask,           
+        Mod2Mask | LockMask 
     };
     
     for (unsigned int lock_mod : lock_modifiers) {
@@ -303,7 +337,7 @@ void KeybindManager::grabKeyWithLocks(Display* display, KeyCode keycode,
 void KeybindManager::handleKeyPress(const XKeyEvent& event, WindowManager* wm) {
     KeySym keysym = XkbKeycodeToKeysym(event.display, event.keycode, 0, 0);
     
-    // Mask out lock keys (Num Lock, Caps Lock, Scroll Lock)
+    
     unsigned int modifiers = event.state & (ShiftMask | ControlMask | Mod1Mask | Mod4Mask);
     
     for (const auto& bind : keybinds_) {
@@ -322,7 +356,7 @@ void KeybindManager::handleKeyPress(const XKeyEvent& event, WindowManager* wm) {
 
 void KeybindManager::executeAction(const std::string& action, WindowManager* wm) {
     
-    // Parse action and parameters
+    
     std::istringstream iss(action);
     std::string command;
     iss >> command;
@@ -343,7 +377,7 @@ void KeybindManager::executeAction(const std::string& action, WindowManager* wm)
         wm->exit();
         
     } else if (command == "workspace") {
-        // Switch to workspace
+        
         int ws;
         iss >> ws;
         wm->switchWorkspace(ws);
@@ -351,36 +385,39 @@ void KeybindManager::executeAction(const std::string& action, WindowManager* wm)
     } else if (command == "movetoworkspace") {
         int ws;
         iss >> ws;
-        wm->moveWindowToWorkspace(ws, true);  // Follow by default
+        wm->moveWindowToWorkspace(ws, true);  
     
     } else if (command == "movetoworkspacesilent") {
         int ws;
         iss >> ws;
-        wm->moveWindowToWorkspace(ws, false);  // Don't follow
+        wm->moveWindowToWorkspace(ws, false);  
         
     } else if (command == "workspacenext") {
-        // Switch to next workspace (for infinite workspaces)
-        wm->switchWorkspace(wm->getCurrentWorkspace() + 2);  // +2 because it's 1-indexed in switchWorkspace
+        
+        
+        wm->switchWorkspace(wm->getCurrentWorkspace() + 1);
         
     } else if (command == "workspaceprev") {
-        // Switch to previous workspace
+        
+        
+        
         int current = wm->getCurrentWorkspace();
-        if (current > 0) {
-            wm->switchWorkspace(current);  // current is 0-indexed, switchWorkspace expects 1-indexed
+        if (current >= 0) {
+            wm->switchWorkspace(current);
         }
         
     } else if (command == "layout") {
-        // Change layout mode
+        
         std::string layout_type;
         iss >> layout_type;
         wm->setLayout(layout_type);
         
     } else if (command == "cyclenext") {
-        // Cycle to next layout
+        
         wm->cycleLayoutNext();
         
     } else if (command == "cycleprev") {
-        // Cycle to previous layout
+        
         wm->cycleLayoutPrev();
         
     } else if (command == "focusleft") {
@@ -422,6 +459,22 @@ void KeybindManager::executeAction(const std::string& action, WindowManager* wm)
     } else if (command == "togglesplit") {
         wm->toggleSplitDirection();
         
+    } else if (command == "scratchpad_show") {
+        
+        wm->showScratchpad();
+        
+    } else if (command == "scratchpad_show_next") {
+        
+        wm->showScratchpadNext();
+        
+    } else if (command == "scratchpad_show_prev") {
+        
+        wm->showScratchpadPrevious();
+        
+    } else if (command == "scratchpad_hide") {
+        
+        wm->hideToScratchpad();
+        
     } else {
         std::cerr << "Unknown action: " << action << std::endl;
     }
@@ -438,20 +491,20 @@ void KeybindManager::executeCommand(const std::string& command) {
     }
     
     if (pid == 0) {
-        // Child process
         
-        // Create a new session so the child is not killed when WM exits
+        
+        
         if (setsid() == -1) {
             perror("setsid");
             std::exit(1);
         }
         
-        // Close all file descriptors except stdin/stdout/stderr
+        
         for (int fd = 3; fd < 1024; ++fd) {
             close(fd);
         }
         
-        // Redirect stdin/stdout/stderr to /dev/null to prevent blocking
+        
         int devnull = open("/dev/null", O_RDWR);
         if (devnull != -1) {
             dup2(devnull, STDIN_FILENO);
@@ -462,15 +515,15 @@ void KeybindManager::executeCommand(const std::string& command) {
             }
         }
         
-        // Execute the command through shell
+        
         execl("/bin/sh", "sh", "-c", command.c_str(), nullptr);
         
-        // If execl fails
+        
         perror("execl");
         std::exit(1);
     }
     
-    // Parent process - don't wait for child
+    
 }
 
-} // namespace pblank
+} 

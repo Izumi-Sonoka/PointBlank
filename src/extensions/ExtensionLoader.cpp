@@ -20,22 +20,22 @@
 
 namespace pblank {
 
-// ============================================================================
-// Constructor / Destructor
-// ============================================================================
+
+
+
 
 ExtensionLoader::ExtensionLoader(Display* display, Window root)
     : display_(display)
     , root_(root)
     , user_extension_dir_(getUserExtensionDir())
 {
-    // Initialize validation context with current API version
+    
     validation_context_.core_api_major = PB_API_VERSION_MAJOR;
     validation_context_.core_api_minor = PB_API_VERSION_MINOR;
     validation_context_.core_api_patch = PB_API_VERSION_PATCH;
     validation_context_.core_checksum = api::v2::API_CHECKSUM;
     
-    // Create user extension directory if it doesn't exist
+    
     if (!std::filesystem::exists(user_extension_dir_)) {
         std::filesystem::create_directories(user_extension_dir_);
     }
@@ -45,34 +45,34 @@ ExtensionLoader::~ExtensionLoader() {
     unloadAll();
 }
 
-// ============================================================================
-// Configuration
-// ============================================================================
+
+
+
 
 void ExtensionLoader::addRequiredCapability(const std::string& cap) {
     validation_context_.required_capabilities.push_back(cap);
 }
 
-// ============================================================================
-// Extension Discovery
-// ============================================================================
+
+
+
 
 std::vector<ExtensionLoadResult> ExtensionLoader::loadFromManifest(
     const std::filesystem::path& config_path) {
     
     std::vector<ExtensionLoadResult> results;
     
-    // Parse manifest for import directives
+    
     auto imports = parseManifestImports(config_path);
     
-    // Look for extensions in system paths
+    
     std::vector<std::filesystem::path> search_paths = {
         "/usr/lib/pointblank/extensions",
         "/usr/local/lib/pointblank/extensions",
         std::filesystem::current_path() / "extensions"
     };
     
-    // Add user extension directory
+    
     if (std::filesystem::exists(user_extension_dir_)) {
         search_paths.push_back(user_extension_dir_);
     }
@@ -80,7 +80,7 @@ std::vector<ExtensionLoadResult> ExtensionLoader::loadFromManifest(
     for (const auto& import_name : imports) {
         bool found = false;
         
-        // Search for the extension in each path
+        
         for (const auto& search_path : search_paths) {
             std::filesystem::path ext_path = search_path / (import_name + ".so");
             
@@ -91,7 +91,7 @@ std::vector<ExtensionLoadResult> ExtensionLoader::loadFromManifest(
                 break;
             }
             
-            // Also try lib prefix
+            
             ext_path = search_path / ("lib" + import_name + ".so");
             if (std::filesystem::exists(ext_path)) {
                 auto result = loadExtension(ext_path, false);
@@ -120,7 +120,7 @@ int ExtensionLoader::loadUserExtensions() {
         return 0;
     }
     
-    // Recursively scan for .so files
+    
     auto extension_paths = scanForExtensions(user_extension_dir_, true);
     
     for (const auto& path : extension_paths) {
@@ -133,7 +133,7 @@ int ExtensionLoader::loadUserExtensions() {
                 toaster_->success("Loaded user extension: " + result.extension_name);
             }
         } else {
-            // Log error but continue loading other extensions
+            
             if (toaster_) {
                 toaster_->error("Failed to load extension: " + result.error_message);
             }
@@ -152,21 +152,21 @@ ExtensionLoadResult ExtensionLoader::loadExtension(
     
     auto load_start = std::chrono::steady_clock::now();
     
-    // Check if file exists
+    
     if (!std::filesystem::exists(path)) {
         result.result = Result::InvalidArgument;
         result.error_message = "File not found: " + path.string();
         return result;
     }
     
-    // Check file extension
+    
     if (path.extension() != ".so") {
         result.result = Result::InvalidArgument;
         result.error_message = "Invalid extension file (must be .so)";
         return result;
     }
     
-    // Load shared object
+    
     void* handle = dlopen(path.c_str(), RTLD_NOW | RTLD_LOCAL);
     if (!handle) {
         result.result = Result::SymbolNotFound;
@@ -179,7 +179,7 @@ ExtensionLoadResult ExtensionLoader::loadExtension(
     ext.path = path;
     ext.is_user_extension = is_user_extension;
     
-    // Resolve symbols
+    
     if (!resolveSymbols(handle, ext)) {
         dlclose(handle);
         result.result = Result::SymbolNotFound;
@@ -187,7 +187,7 @@ ExtensionLoadResult ExtensionLoader::loadExtension(
         return result;
     }
     
-    // Get extension info
+    
     const ExtensionInfo* info = ext.info_func();
     if (!info) {
         dlclose(handle);
@@ -196,13 +196,13 @@ ExtensionLoadResult ExtensionLoader::loadExtension(
         return result;
     }
     
-    // Copy info
+    
     ext.info = *info;
     result.extension_name = info->name;
     result.api_version_major = info->api_version_major;
     result.api_version_minor = info->api_version_minor;
     
-    // Validate ABI
+    
     if (!validateABI(info)) {
         dlclose(handle);
         result.result = Result::VersionMismatch;
@@ -210,7 +210,7 @@ ExtensionLoadResult ExtensionLoader::loadExtension(
         return result;
     }
     
-    // Create extension instance
+    
     ext.instance = ext.create_func();
     if (!ext.instance) {
         dlclose(handle);
@@ -219,7 +219,7 @@ ExtensionLoadResult ExtensionLoader::loadExtension(
         return result;
     }
     
-    // Validate hooks
+    
     if (!validateHooks(ext.instance)) {
         ext.destroy_func(ext.instance);
         dlclose(handle);
@@ -228,12 +228,12 @@ ExtensionLoadResult ExtensionLoader::loadExtension(
         return result;
     }
     
-    // Initialize extension
+    
     ExtensionContext ctx;
     ctx.display = display_;
     ctx.root = root_;
     ctx.screen = DefaultScreen(display_);
-    ctx.focused_window = nullptr;  // Will be updated by WindowManager
+    ctx.focused_window = nullptr;  
     ctx.current_workspace = 0;
     ctx.workspace_count = 12;
     ctx.frame_counter = nullptr;
@@ -247,11 +247,11 @@ ExtensionLoadResult ExtensionLoader::loadExtension(
         return result;
     }
     
-    // Initialize stats
+    
     ext.stats.name = info->name;
     ext.stats.last_activity = std::chrono::steady_clock::now();
     
-    // Add to loaded extensions
+    
     {
         std::unique_lock lock(extensions_mutex_);
         extensions_[info->name] = std::move(ext);
@@ -276,19 +276,19 @@ Result ExtensionLoader::unloadExtension(const std::string& name) {
     
     LoadedExtension& ext = it->second;
     
-    // Shutdown extension
+    
     Result shutdown_result = ext.instance->shutdown();
     if (shutdown_result != Result::Success && validation_context_.strict_mode) {
         return Result::ShutdownFailed;
     }
     
-    // Destroy instance
+    
     ext.destroy_func(ext.instance);
     
-    // Close shared object
+    
     dlclose(ext.handle);
     
-    // Remove from map
+    
     extensions_.erase(it);
     dispatch_order_dirty_ = true;
     
@@ -328,7 +328,7 @@ ExtensionLoadResult ExtensionLoader::reloadExtension(const std::string& name) {
         return result;
     }
     
-    // Unload first
+    
     Result unload_result = unloadExtension(name);
     if (unload_result != Result::Success) {
         ExtensionLoadResult result;
@@ -337,13 +337,13 @@ ExtensionLoadResult ExtensionLoader::reloadExtension(const std::string& name) {
         return result;
     }
     
-    // Reload
+    
     return loadExtension(path, is_user);
 }
 
-// ============================================================================
-// Extension Query
-// ============================================================================
+
+
+
 
 std::vector<LoadedExtension> ExtensionLoader::getLoadedExtensions() const {
     std::shared_lock lock(extensions_mutex_);
@@ -388,9 +388,9 @@ std::vector<ExtensionStats> ExtensionLoader::getAllStats() const {
     return result;
 }
 
-// ============================================================================
-// Event Dispatch
-// ============================================================================
+
+
+
 
 bool ExtensionLoader::dispatchWindowMap(const WindowHandle* window) {
     return dispatchEvent(api::v2::EventType::WindowMap, window);
@@ -405,7 +405,7 @@ bool ExtensionLoader::dispatchWindowDestroy(const WindowHandle* window) {
 }
 
 bool ExtensionLoader::dispatchWindowFocus(const WindowHandle* old_win, const WindowHandle* new_win) {
-    // Special handling for focus events (two windows)
+    
     if (dispatch_order_dirty_) {
         updateDispatchOrder();
     }
@@ -643,9 +643,9 @@ void ExtensionLoader::dispatchPostRender() {
     }
 }
 
-// ============================================================================
-// Layout Provider Interface
-// ============================================================================
+
+
+
 
 std::vector<IExtension*> ExtensionLoader::getLayoutProviders() const {
     std::vector<IExtension*> providers;
@@ -672,9 +672,9 @@ IExtension* ExtensionLoader::getLayoutProvider(const std::string& name) const {
     return nullptr;
 }
 
-// ============================================================================
-// Health Monitoring
-// ============================================================================
+
+
+
 
 void ExtensionLoader::checkHealth() {
     if (!health_monitoring_enabled_) return;
@@ -690,7 +690,7 @@ void ExtensionLoader::checkHealth() {
         bool healthy = ext.instance->isHealthy();
         ext.stats.is_healthy = healthy;
         
-        // Check for stalled extensions (no activity for 60 seconds with events)
+        
         if (ext.stats.events_processed > 0) {
             auto inactive_time = std::chrono::duration_cast<std::chrono::seconds>(
                 now - ext.stats.last_activity).count();
@@ -716,24 +716,24 @@ std::vector<std::string> ExtensionLoader::getUnhealthyExtensions() const {
     return unhealthy;
 }
 
-// ============================================================================
-// Internal Methods
-// ============================================================================
+
+
+
 
 bool ExtensionLoader::validateABI(const ExtensionInfo* info) const {
-    // Check version compatibility (major must match, minor can be <=)
+    
     if (info->api_version_major != validation_context_.core_api_major) {
         return false;
     }
     
     if (info->api_version_minor > validation_context_.core_api_minor) {
-        // Extension was built against newer API
+        
         return false;
     }
     
-    // Verify checksum for strict ABI validation
+    
     if (info->api_checksum != validation_context_.core_checksum) {
-        // Checksum mismatch - structures may have changed
+        
         if (validation_context_.strict_mode) {
             return false;
         }
@@ -743,15 +743,15 @@ bool ExtensionLoader::validateABI(const ExtensionInfo* info) const {
 }
 
 bool ExtensionLoader::validateSymbols(void* handle, LoadedExtension& ext) {
-    // Clear any existing error
+    
     dlerror();
     
-    // Look for versioned symbols first
+    
     ext.create_func = reinterpret_cast<api::v2::CreateExtensionFunc_v2>(
         dlsym(handle, "createExtension_v2"));
     
     if (!ext.create_func) {
-        // Try unversioned symbol for backward compatibility
+        
         ext.create_func = reinterpret_cast<api::v2::CreateExtensionFunc_v2>(
             dlsym(handle, "createExtension"));
         
@@ -783,17 +783,17 @@ bool ExtensionLoader::validateSymbols(void* handle, LoadedExtension& ext) {
 }
 
 bool ExtensionLoader::validateHooks(IExtension* instance) {
-    // Get event mask
+    
     EventMask mask = instance->getEventMask();
     
-    // Verify the extension implements at least one hook
+    
     if (mask.mask == 0) {
-        // Extension doesn't subscribe to any events
-        // This might be intentional for layout-only extensions
+        
+        
         return true;
     }
     
-    // Verify extension info is valid
+    
     const ExtensionInfo* info = instance->getInfo();
     if (!info || std::strlen(info->name) == 0) {
         return false;
@@ -825,7 +825,7 @@ void ExtensionLoader::updateDispatchOrder() {
         dispatch_order_.emplace_back(ext.info.priority, name);
     }
     
-    // Sort by priority (highest first)
+    
     std::sort(dispatch_order_.begin(), dispatch_order_.end(),
         [](const auto& a, const auto& b) { return a.first > b.first; });
     
@@ -870,18 +870,18 @@ std::vector<std::string> ExtensionLoader::parseManifestImports(
     std::ifstream file(config_path);
     std::string line;
     
-    // Regex patterns for import directives
+    
     std::regex import_regex(R"(#import\s+(\w+))");
     std::regex include_regex(R"(#include\s+(\S+))");
     
     while (std::getline(file, line)) {
         std::smatch match;
         
-        // Check for #import directive (user extensions from ~/.config/pblank/extensions/user/)
+        
         if (std::regex_search(line, match, import_regex)) {
             imports.push_back(match[1].str());
         }
-        // Check for #include directive (built-in extensions from ~/.config/pblank/extensions/pb/)
+        
         else if (std::regex_search(line, match, include_regex)) {
             imports.push_back(match[1].str());
         }
@@ -916,4 +916,4 @@ void ExtensionLoader::recordStats(const std::string& name, bool blocked, uint64_
     }
 }
 
-} // namespace pblank
+} 
