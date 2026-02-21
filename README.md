@@ -6,8 +6,6 @@ Version: 1.0.1.0
 Last Updated: 19th February 2026 (1500 GMT+8)  
 Maintained by:  Point:project
 
-> [!WARNING]
-> STILL W.I.P SO EXPECT IT TO BREAKS AND HAVE SOME WEIRD ISSUES
 ---
 
 ## Table of Contents
@@ -32,7 +30,7 @@ Maintained by:  Point:project
 
 ### What is Point:Blank?
 
-Point:Blank is a modern, source-built tiling window manager for X11 with infinite layouts, infinite workspaces, and a crash-proof configuration system. It's configured with a proper DSL — not shell scripts, not C patches, not YAML nightmares. Think of it as what happens when someone gets mad enough at existing WMs to write their own.
+Point:Blank is a modern, source-built tiling window manager for X11 with infinite layouts, infinite workspaces, and a crash-proof configuration system. It's configured with a proper DSL not shell scripts, not C patches, not YAML nightmares. Think of it as what happens when someone gets mad enough at existing WMs to write their own.
 
 ### The Name
 
@@ -42,7 +40,7 @@ Point:Blank is a modern, source-built tiling window manager for X11 with infinit
 
 ### Who Makes This?
 
-**N3ZT POSSIBLE G3N** — upcoming  
+**N3ZT POSSIBLE G3N** - upcoming  
 **Point:project**  
 Maintained by **Astaraxia Linux's Maniac.**
 
@@ -50,14 +48,14 @@ Maintained by **Astaraxia Linux's Maniac.**
 
 ## Why Point:Blank?
 
-- **401 KB PSS at idle** — leaner than dwm while doing more than i3
-- **8 layout modes** — not just one "tiling" mode like every other WM
-- **A real DSL** — `"SUPER, Q": "killactive"` just works
-- **Full EWMH compliance** — 50+ atoms, polybar/lemonbar/yambar just works
-- **Crash-proof** — bad config shows a toast notification, not a blank screen
-- **Infinite workspaces** — dynamic creation, auto-remove on empty
-- **Extension system v2.0** — dlopen-based plugins with ABI validation
-- **Hot-reload** — edit config, save, done. No restart.
+- **401 KB PSS at idle** - leaner than dwm while doing more than i3
+- **8 layout modes** - not just one "tiling" mode like every other WM
+- **A real DSL** - `"SUPER, Q": "killactive"` just works
+- **Full EWMH compliance** - 50+ atoms, polybar/lemonbar/yambar just works
+- **Crash-proof** - bad config shows a toast notification, not a blank screen
+- **Infinite workspaces** - dynamic creation, auto-remove on empty
+- **Extension system v2.0** - dlopen-based plugins with ABI validation
+- **Hot-reload** - edit config, save, done. No restart.
 
 ### Why Not Point:Blank?
 
@@ -302,14 +300,10 @@ No shell scripts. No C patching. No YAML. Just a DSL that makes sense.
 ### Example Configuration
 
 ```wmi
-// Load built-in extensions
-#include animation
-
 // Core config
 pointblank: {
     window_rules: {
         opacity: 0.95
-        blur: true
     };
 
     workspaces: {
@@ -329,18 +323,12 @@ pointblank: {
         "SUPER, J":          "focusdown"
         "SUPER, SHIFT, Q":   "quit"
     };
-
-    animations: {
-        enabled: true
-        curve: "ease-in-out"
-    };
 };
 
 // Per-application rules
 if (window.class == "Firefox") {
     window_rules: {
         opacity: 1.0
-        blur: false
     };
 };
 ```
@@ -477,7 +465,7 @@ Point:Blank uses a custom DSL called `.wmi`. It's configured like a language, no
 let opacity = 0.95;         // float
 let max_ws  = 12;           // int
 let terminal = "alacritty"; // string
-let blur = true;            // bool
+let gaps = true;            // bool
 ```
 
 ### Blocks
@@ -508,7 +496,6 @@ Modifiers: `SUPER`, `ALT`, `CTRL`, `SHIFT`, `L_SHIFT`, `R_SHIFT`
 if (window.class == "Firefox") {
     window_rules: {
         opacity: 1.0
-        blur: false
     };
 } else {
     window_rules: {
@@ -520,8 +507,8 @@ if (window.class == "Firefox") {
 ### Preprocessor
 
 ```wmi
-#include animation       // Built-in extension from extensions/pb/
-#import my_extension     // Your extension from extensions/user/
+#include gaps           // Built-in extension from extensions/pb/
+#import my_extension    // Your extension from extensions/user/
 ```
 
 ### Autostart
@@ -777,12 +764,12 @@ MIT — see LICENSE file.
 > _"If there's a limit, we break through it._  
 > _If there's no limit, we become the limit._  
 > _Repeat until it fails."_  
-> — N3ZT POSSIBLE G3N
+> - _N3ZT POSSIBLE G3N_
 
 Point:Blank is still evolving. The philosophy is based, the implementation is transparent, and the memory usage is genuinely embarrassingly small. If you made it this far, you're either building a WM or very bored. Either way happy using Point:Blank!!
 
 ---
 
-**Last updated**: 19th February 2026 (1500 GMT+8)  
+**Last updated**: 21th February 2026 (1133 GMT+8)  
 **Documentation version**: 2.0  
 **Sanity level**: Questionable but functional
