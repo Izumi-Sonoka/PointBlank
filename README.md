@@ -758,7 +758,7 @@ One Maniac. Send help. Or coffee. Or bug reports, those are also useful.
 
 ## License
 
-MIT — see LICENSE file.
+MIT - see LICENSE file.
 
 ---
 
